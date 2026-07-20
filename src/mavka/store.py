@@ -41,6 +41,31 @@ class VectorStore:
             raise ValueError(f"id {id!r} out of range [0, {self._count})")
         return self._data[id].copy()
 
+    def search(self, query, k: int) -> list[tuple[int, float]]:
+        query = np.asarray(query, dtype=np.float32)
+        if query.ndim != 1 or query.shape[0] != self._dim:
+            raise ValueError(f"query must have length {self._dim}, got shape {query.shape}")
+        if k <= 0:
+            raise ValueError(f"k must be positive, got {k!r}")
+        if self._count == 0:
+            return []
+
+        scores = self._data[: self._count] @ query
+        k = min(k, self._count)
+
+        if k < self._count:
+            # Indices of the k largest scores, in O(n) time but unsorted among themselves.
+            top_ids = np.argpartition(scores, -k)[-k:]
+        else:
+            top_ids = np.arange(self._count)
+
+        # Sort top_ids by score descending (argsort ranks scores, not ids, so we
+        # get a permutation of positions and apply it to top_ids, not to the scores).
+        order = np.argsort(scores[top_ids])[::-1]
+        top_ids = top_ids[order]
+
+        return [(int(idx), float(scores[idx])) for idx in top_ids]
+
     def _ensure_capacity(self, required: int) -> None:
         if required <= self._capacity:
             return
