@@ -1,6 +1,24 @@
 import numpy as np
 
 
+def normalize(vectors: np.ndarray) -> np.ndarray:
+    vectors = np.asarray(vectors, dtype=np.float32)
+    if vectors.ndim == 1:
+        # returns the length of the vector using L2
+        norm = np.linalg.norm(vectors)
+        if norm == 0:
+            raise ValueError("cannot normalize a zero vector")
+        # divide each dimention by the length of the vector to shrink this vector length to 1
+        return (vectors / norm).astype(np.float32)
+    if vectors.ndim == 2:
+        # returns the list of length of vectors using L2
+        norms = np.linalg.norm(vectors, axis=1)
+        if np.any(norms == 0):
+            raise ValueError("cannot normalize a zero vector")
+        return (vectors / norms[:, np.newaxis]).astype(np.float32)
+    raise ValueError(f"vectors must be 1D or 2D, got shape {vectors.shape}")
+
+
 class VectorStore:
     def __init__(self, dim: int, initial_capacity: int = 1024):
         self._dim = dim
@@ -19,6 +37,7 @@ class VectorStore:
         vector = np.asarray(vector, dtype=np.float32)
         if vector.ndim != 1 or vector.shape[0] != self._dim:
             raise ValueError(f"vector must have length {self._dim}, got shape {vector.shape}")
+        vector = normalize(vector)
         self._ensure_capacity(self._count + 1)
         idx = self._count
         self._data[idx] = vector
@@ -29,6 +48,7 @@ class VectorStore:
         vectors = np.asarray(vectors, dtype=np.float32)
         if vectors.ndim != 2 or vectors.shape[1] != self._dim:
             raise ValueError(f"vectors must have shape (n, {self._dim}), got {vectors.shape}")
+        vectors = normalize(vectors)
         n = vectors.shape[0]
         self._ensure_capacity(self._count + n)
         start = self._count
@@ -50,6 +70,7 @@ class VectorStore:
         if self._count == 0:
             return []
 
+        query = normalize(query)
         scores = self._data[: self._count] @ query
         k = min(k, self._count)
 

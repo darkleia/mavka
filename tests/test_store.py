@@ -19,23 +19,25 @@ def test_add_returns_sequential_ids():
 
 def test_count_and_len_track_additions():
     store = VectorStore(dim=2)
-    for i in range(5):
+    for i in range(1, 6):
         store.add([float(i), float(i)])
-        assert store.count == i + 1
-        assert len(store) == i + 1
+        assert store.count == i
+        assert len(store) == i
 
 
-def test_get_returns_same_values():
+def test_get_returns_normalized_values():
     store = VectorStore(dim=3)
     id0 = store.add([1.0, 2.0, 3.0])
     id1 = store.add(np.array([4.0, 5.0, 6.0]))
-    np.testing.assert_array_equal(store.get(id0), np.array([1.0, 2.0, 3.0], dtype=np.float32))
-    np.testing.assert_array_equal(store.get(id1), np.array([4.0, 5.0, 6.0], dtype=np.float32))
+    expected0 = np.array([1.0, 2.0, 3.0]) / np.linalg.norm([1.0, 2.0, 3.0])
+    expected1 = np.array([4.0, 5.0, 6.0]) / np.linalg.norm([4.0, 5.0, 6.0])
+    np.testing.assert_allclose(store.get(id0), expected0, atol=1e-6)
+    np.testing.assert_allclose(store.get(id1), expected1, atol=1e-6)
 
 
 def test_add_batch_returns_correct_ids_and_count():
     store = VectorStore(dim=2)
-    store.add([0.0, 0.0])
+    store.add([1.0, 1.0])
     ids = store.add_batch([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]])
     assert ids == [1, 2, 3]
     assert store.count == 4
@@ -46,27 +48,31 @@ def test_add_batch_values_retrievable():
     vectors = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     ids = store.add_batch(vectors)
     for id_, expected in zip(ids, vectors):
-        np.testing.assert_array_equal(store.get(id_), expected.astype(np.float32))
+        expected_normalized = expected / np.linalg.norm(expected)
+        np.testing.assert_allclose(store.get(id_), expected_normalized, atol=1e-6)
 
 
 def test_growth_beyond_initial_capacity():
     store = VectorStore(dim=4, initial_capacity=4)
     n = 10
-    for i in range(n):
+    for i in range(1, n + 1):
         store.add([float(i)] * 4)
     assert store.count == n
-    for i in range(n):
-        np.testing.assert_array_equal(store.get(i), np.array([float(i)] * 4, dtype=np.float32))
+    for i in range(1, n + 1):
+        expected = np.array([float(i)] * 4)
+        expected_normalized = expected / np.linalg.norm(expected)
+        np.testing.assert_allclose(store.get(i - 1), expected_normalized, atol=1e-6)
 
 
 def test_growth_via_add_batch():
     store = VectorStore(dim=2, initial_capacity=2)
-    vectors = [[float(i), float(i)] for i in range(20)]
+    vectors = [[float(i), float(i)] for i in range(1, 21)]
     ids = store.add_batch(vectors)
     assert ids == list(range(20))
     assert store.count == 20
-    for i in ids:
-        np.testing.assert_array_equal(store.get(i), np.array([float(i), float(i)], dtype=np.float32))
+    for i, vector in zip(ids, vectors):
+        expected_normalized = np.array(vector) / np.linalg.norm(vector)
+        np.testing.assert_allclose(store.get(i), expected_normalized, atol=1e-6)
 
 
 def test_wrong_length_vector_raises():
