@@ -15,6 +15,7 @@ class AppendLog:
         self._action_dim = action_dim
         self._records: list[Experience] = []
         self._episode_seq_counters: dict[int, int] = {}
+        self._episode_index: dict[int, list[int]] = {}
         self._id_counter = itertools.count()
         self._lock = threading.Lock()
 
@@ -71,6 +72,7 @@ class AppendLog:
                 action=action,
             )
             self._records.append(exp)
+            self._episode_index.setdefault(episode_id, []).append(id_)
 
         return id_
 
@@ -115,3 +117,47 @@ class AppendLog:
         with self._lock:
             record = self.get(id)
             self._records[id] = replace(record, flags=record.flags | FLAG_DELETED)
+
+    def _episode_member_ids(self, episode_id: int) -> list[int]:
+        if episode_id not in self._episode_index:
+            raise ValueError(f"unknown episode_id {episode_id!r}")
+        return self._episode_index[episode_id]
+
+    def next_in_episode(self, id: int) -> Experience | None:
+        record = self.get(id)
+        member_ids = self._episode_index[record.episode_id]
+        next_seq_no = record.seq_no + 1
+        if next_seq_no >= len(member_ids):
+            return None
+        return self._records[member_ids[next_seq_no]]
+
+    def prev_in_episode(self, id: int) -> Experience | None:
+        record = self.get(id)
+        if record.seq_no == 0:
+            return None
+        member_ids = self._episode_index[record.episode_id]
+        return self._records[member_ids[record.seq_no - 1]]
+
+    def get_episode(self, episode_id: int) -> list[Experience]:
+        member_ids = self._episode_member_ids(episode_id)
+        return [self._records[id_] for id_ in member_ids]
+
+    def episode_ids(self) -> list[int]:
+        return list(self._episode_index.keys())
+
+    def episode_length(self, episode_id: int) -> int:
+        return len(self._episode_member_ids(episode_id))
+
+    def walk_forward(self, id: int, n: int) -> list[Experience]:
+        record = self.get(id)
+        member_ids = self._episode_index[record.episode_id]
+        start = record.seq_no + 1
+        end = min(start + n, len(member_ids))
+        return [self._records[id_] for id_ in member_ids[start:end]]
+
+    def walk_back(self, id: int, n: int) -> list[Experience]:
+        record = self.get(id)
+        member_ids = self._episode_index[record.episode_id]
+        end = record.seq_no
+        start = max(0, end - n)
+        return [self._records[id_] for id_ in reversed(member_ids[start:end])]
