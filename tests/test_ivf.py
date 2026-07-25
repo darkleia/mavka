@@ -100,9 +100,9 @@ def test_every_vector_in_exactly_one_bucket():
 
 def test_add_and_search_before_train_raise():
     ivf = IVFIndex(dim=8, n_lists=5)
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         ivf.add([1.0] * 8)
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         ivf.search([1.0] * 8, k=1)
 
 

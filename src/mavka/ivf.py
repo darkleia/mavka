@@ -1,10 +1,25 @@
+from enum import Enum
+
 import numpy as np
 
 from mavka.kmeans import assign, kmeans
 from mavka.store import VectorStore, normalize
 
 
+class IVFState(str, Enum):
+    UNTRAINED = "untrained"
+    TRAINED = "trained"
+
+
 class IVFIndex:
+    """Approximate nearest-neighbor index using inverted-file (IVF) search.
+
+    Required call order: construct, then call train(vectors) exactly once to
+    learn centroids, then add()/add_batch() and search() any number of times
+    in any order. train() cannot be called again once the index is trained;
+    add()/add_batch()/search() cannot be called until it has been.
+    """
+
     def __init__(self, dim: int, n_lists: int = 100, seed: int = 0):
         self.dim = dim
         self.n_lists = n_lists
@@ -13,12 +28,26 @@ class IVFIndex:
         self.nprobe = 1
 
         self._store = VectorStore(dim=dim)
-        self._trained = False
+        self._state = IVFState.UNTRAINED
         self._centroids: np.ndarray | None = None
         self._n_lists_actual = 0
         self._inverted_lists: list[list[int]] = []
 
+    @property
+    def state(self) -> IVFState:
+        return self._state
+
+    @property
+    def is_trained(self) -> bool:
+        return self._state == IVFState.TRAINED
+
     def train(self, vectors) -> None:
+        if self._state != IVFState.UNTRAINED:
+            raise RuntimeError(
+                "train() may only be called once on a fresh index; this index "
+                "is already trained (retraining is a separate later feature)"
+            )
+
         vectors = normalize(np.asarray(vectors, dtype=np.float32))
         n = vectors.shape[0]
         # Fewer training vectors than n_lists: reduce the effective number of
@@ -30,11 +59,11 @@ class IVFIndex:
         self._centroids = centroids
         self._n_lists_actual = n_lists_actual
         self._inverted_lists = [[] for _ in range(n_lists_actual)]
-        self._trained = True
+        self._state = IVFState.TRAINED
 
     def _require_trained(self) -> None:
-        if not self._trained:
-            raise ValueError("IVFIndex must be trained before add/search (call train() first)")
+        if self._state != IVFState.TRAINED:
+            raise RuntimeError("index must be trained before adding/searching (call train() first)")
 
     def add(self, vector) -> int:
         self._require_trained()
