@@ -1,3 +1,4 @@
+from collections import deque
 from enum import Enum
 
 import numpy as np
@@ -20,6 +21,10 @@ class IVFIndex:
     add()/add_batch()/search() cannot be called until it has been.
     """
 
+    # Number of most-recent inserted vectors' assignment distances kept for
+    # drift_score(); bounds memory for a store that streams forever.
+    _RECENT_WINDOW = 1000
+
     def __init__(self, dim: int, n_lists: int = 100, seed: int = 0):
         self.dim = dim
         self.n_lists = n_lists
@@ -32,6 +37,8 @@ class IVFIndex:
         self._centroids: np.ndarray | None = None
         self._n_lists_actual = 0
         self._inverted_lists: list[list[int]] = []
+        self._baseline_distance = 0.0
+        self._recent_distances: deque[float] = deque(maxlen=self._RECENT_WINDOW)
 
     @property
     def state(self) -> IVFState:
@@ -54,11 +61,17 @@ class IVFIndex:
         # clusters to n rather than raising, so training never fails outright.
         n_lists_actual = min(self.n_lists, n)
 
-        centroids, _ = kmeans(vectors, k=n_lists_actual, seed=self.seed)
+        centroids, assignments = kmeans(vectors, k=n_lists_actual, seed=self.seed)
 
         self._centroids = centroids
         self._n_lists_actual = n_lists_actual
         self._inverted_lists = [[] for _ in range(n_lists_actual)]
+
+        # Baseline for drift_score(): mean squared distance of the training
+        # vectors themselves to their assigned centroid, right after training.
+        training_distances = np.sum((vectors - centroids[assignments]) ** 2, axis=1)
+        self._baseline_distance = float(training_distances.mean())
+
         self._state = IVFState.TRAINED
 
     def _require_trained(self) -> None:
@@ -66,12 +79,7 @@ class IVFIndex:
             raise RuntimeError("index must be trained before adding/searching (call train() first)")
 
     def add(self, vector) -> int:
-        self._require_trained()
-        id_ = self._store.add(vector)
-        normalized = self._store.get(id_)
-        bucket = int(assign(normalized[np.newaxis, :], self._centroids)[0])
-        self._inverted_lists[bucket].append(id_)
-        return id_
+        return self.add_batch([vector])[0]
 
     def add_batch(self, vectors) -> list[int]:
         self._require_trained()
@@ -80,6 +88,11 @@ class IVFIndex:
         buckets = assign(normalized_batch, self._centroids)
         for id_, bucket in zip(ids, buckets):
             self._inverted_lists[int(bucket)].append(id_)
+
+        assigned_centroids = self._centroids[buckets]
+        distances = np.sum((normalized_batch - assigned_centroids) ** 2, axis=1)
+        self._recent_distances.extend(distances.tolist())
+
         return ids
 
     def _nearest_centroids(self, query: np.ndarray, nprobe: int) -> np.ndarray:
@@ -135,3 +148,40 @@ class IVFIndex:
 
     def __len__(self) -> int:
         return len(self._store)
+
+    def bucket_sizes(self) -> np.ndarray:
+        return np.array([len(bucket) for bucket in self._inverted_lists], dtype=np.int64)
+
+    def imbalance_factor(self) -> float:
+        """max_bucket_size / mean_bucket_size. ~1-2 is near-balanced; a large
+        value means a few buckets are absorbing disproportionately many
+        vectors relative to the rest. 1.0 if no vectors have been added yet.
+        """
+        sizes = self.bucket_sizes()
+        if sizes.sum() == 0:
+            return 1.0
+        return float(sizes.max() / sizes.mean())
+
+    def drift_score(self) -> float:
+        """Mean squared distance of the most recent (up to _RECENT_WINDOW)
+        added vectors to their assigned centroid, divided by the same
+        quantity measured on the training data right after train(). 1.0
+        means recent inserts fit their buckets as well as training data did;
+        higher means they sit farther from their assigned centroids, i.e.
+        the data distribution has drifted from what the centroids learned.
+        """
+        if not self._recent_distances:
+            return 1.0
+        recent_mean = float(np.mean(self._recent_distances))
+        if self._baseline_distance == 0:
+            return 1.0 if recent_mean == 0 else float("inf")
+        return recent_mean / self._baseline_distance
+
+    def needs_retrain(self, imbalance_threshold: float = 3.0, drift_threshold: float = 2.0) -> bool:
+        """Advisory only: True if bucket imbalance or centroid drift looks
+        bad enough to warrant retraining. Never retrains or mutates state.
+        """
+        return (
+            self.imbalance_factor() >= imbalance_threshold
+            or self.drift_score() >= drift_threshold
+        )
