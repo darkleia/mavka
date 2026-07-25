@@ -34,3 +34,33 @@ def evaluate(index, ground_truth, queries, k: int) -> dict:
         "p99_ms": float(np.percentile(latencies_ms, 99)),
         "mean_ms": float(np.mean(latencies_ms)),
     }
+
+
+def sweep_nprobe(index, ground_truth, queries, k: int, nprobe_values) -> list[dict]:
+    """Measure recall/latency across a range of nprobe settings.
+
+    index.nprobe is restored to its original value before returning, even if
+    evaluation raises partway through the sweep.
+    """
+    original_nprobe = index.nprobe
+    rows = []
+    try:
+        for nprobe in sorted(nprobe_values):
+            index.nprobe = nprobe
+            result = evaluate(index, ground_truth, queries, k)
+            rows.append({"nprobe": nprobe, **result})
+    finally:
+        index.nprobe = original_nprobe
+
+    return rows
+
+
+def format_sweep_table(rows: list[dict]) -> str:
+    header = f"{'nprobe':>8} {'recall':>8} {'p50_ms':>10} {'p95_ms':>10} {'p99_ms':>10}"
+    lines = [header]
+    for row in rows:
+        lines.append(
+            f"{row['nprobe']:>8} {row['mean_recall']:>8.4f} "
+            f"{row['p50_ms']:>10.4f} {row['p95_ms']:>10.4f} {row['p99_ms']:>10.4f}"
+        )
+    return "\n".join(lines)
