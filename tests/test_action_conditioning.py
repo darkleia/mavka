@@ -4,6 +4,7 @@ import pytest
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.baseline import split_episodes
+from mavka.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.store import VectorStore
 
@@ -59,8 +60,9 @@ def test_evaluate_with_retrieval_returns_comparable_stats():
         dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
     )
 
+    predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
     result = evaluate_with_retrieval(
-        eval_adapter, memory_episodes, eval_episodes, pipeline, k=k, scale=1.0
+        memory_episodes, eval_episodes, pipeline, predictor, k=k, scale=1.0
     )
 
     assert set(result.keys()) >= {"mean_error", "median_error", "p90_error", "n_steps", "errors"}
@@ -89,8 +91,9 @@ def test_determinism_same_seed_same_result():
         pipeline = ActionConditionedPipeline(
             dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
         )
+        predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
         return evaluate_with_retrieval(
-            eval_adapter, memory_episodes, eval_episodes, pipeline, k=k, scale=1.0
+            memory_episodes, eval_episodes, pipeline, predictor, k=k, scale=1.0
         )
 
     result_a = run()

@@ -3,6 +3,7 @@ import numpy as np
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.baseline import split_episodes
+from mavka.fusion import ConcatFusionPredictor
 from mavka.log import AppendLog
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.scorer import FixedWeightScorer
@@ -139,12 +140,13 @@ def test_recall_scored_end_to_end_with_evaluate_with_retrieval():
         dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
     )
     scorer = FixedWeightScorer(pipeline._log)
+    predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
 
     result = evaluate_with_retrieval(
-        eval_adapter,
         memory_episodes,
         eval_episodes,
         pipeline,
+        predictor,
         k=k,
         scale=1.0,
         scorer=scorer,

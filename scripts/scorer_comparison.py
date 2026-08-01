@@ -1,6 +1,7 @@
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.baseline import evaluate_no_memory, split_episodes
+from mavka.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.scorer import FixedWeightScorer
 from mavka.store import VectorStore
@@ -41,19 +42,21 @@ def main() -> None:
     rows.append(("no-memory baseline", baseline_result["mean_error"]))
 
     no_scorer_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
+    no_scorer_predictor = ConcatFusionPredictor(no_scorer_adapter, alpha=1.0)
     no_scorer_result = evaluate_with_retrieval(
-        no_scorer_adapter, memory_episodes, eval_episodes, new_pipeline(), k=k, scale=scale
+        memory_episodes, eval_episodes, new_pipeline(), no_scorer_predictor, k=k, scale=scale
     )
     rows.append(("action-conditioned, no scorer", no_scorer_result["mean_error"]))
 
     scorer_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
     scorer_pipeline = new_pipeline()
     scorer = FixedWeightScorer(scorer_pipeline._log)
+    scorer_predictor = ConcatFusionPredictor(scorer_adapter, alpha=1.0)
     scorer_result = evaluate_with_retrieval(
-        scorer_adapter,
         memory_episodes,
         eval_episodes,
         scorer_pipeline,
+        scorer_predictor,
         k=k,
         scale=scale,
         scorer=scorer,
@@ -78,11 +81,12 @@ def main() -> None:
         ablation_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
         ablation_pipeline = new_pipeline()
         ablation_scorer = FixedWeightScorer(ablation_pipeline._log, **weights)
+        ablation_predictor = ConcatFusionPredictor(ablation_adapter, alpha=1.0)
         result = evaluate_with_retrieval(
-            ablation_adapter,
             memory_episodes,
             eval_episodes,
             ablation_pipeline,
+            ablation_predictor,
             k=k,
             scale=scale,
             scorer=ablation_scorer,

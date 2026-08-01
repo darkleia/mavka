@@ -14,6 +14,7 @@ def main() -> None:
     holdout_frac = 0.2
     seed = 0
     k = 10
+    scale = 2.0
 
     gen_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
     all_episodes = [
@@ -27,22 +28,24 @@ def main() -> None:
         f"{len(memory_episodes)} memory, {len(eval_episodes)} eval\n"
     )
 
+    def new_pipeline():
+        return ActionConditionedPipeline(
+            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
+        )
+
     rows = []
 
     baseline_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
     baseline_result = evaluate_no_memory(baseline_adapter, eval_episodes)
-    rows.append(("no-memory baseline", baseline_result["mean_error"]))
+    rows.append(("no-memory baseline (alpha=0.0)", baseline_result["mean_error"]))
 
-    for scale in [0.0, 0.5, 1.0, 2.0]:
-        eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
-        pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
-        )
-        predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
+    for alpha in [0.25, 0.5, 0.75, 1.0]:
+        fusion_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
+        predictor = ConcatFusionPredictor(fusion_adapter, alpha=alpha)
         result = evaluate_with_retrieval(
-            memory_episodes, eval_episodes, pipeline, predictor, k=k, scale=scale
+            memory_episodes, eval_episodes, new_pipeline(), predictor, k=k, scale=scale
         )
-        label = "appearance-only (scale=0.0)" if scale == 0.0 else f"action-conditioned (scale={scale})"
+        label = "pure memory (alpha=1.0)" if alpha == 1.0 else f"concat fusion (alpha={alpha})"
         rows.append((label, result["mean_error"]))
 
     print(f"{'method':32} {'mean_error':>12}")
