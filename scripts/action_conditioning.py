@@ -1,9 +1,10 @@
-from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
+from mavka.config import MavkaConfig
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
-from mavka.retrieval.fusion import ConcatFusionPredictor
-from mavka.pipeline import ActionConditionedPipeline
+from mavka.eval.retrieval_eval import evaluate_with_retrieval
 from mavka.index.flat import FlatIndex
+from mavka.memory import Memory
+from mavka.retrieval.fusion import ConcatFusionPredictor
 
 
 def main() -> None:
@@ -33,15 +34,14 @@ def main() -> None:
     baseline_result = evaluate_no_memory(baseline_adapter, eval_episodes)
     rows.append(("no-memory baseline", baseline_result["mean_error"]))
 
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+
     for scale in [0.0, 0.5, 1.0, 2.0]:
         eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
-        pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
-        )
+        index_dim = dim if scale == 0.0 else dim + action_dim
+        memory = Memory(config, index=FlatIndex(dim=index_dim), action_scale=scale)
         predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
-        result = evaluate_with_retrieval(
-            memory_episodes, eval_episodes, pipeline, predictor, k=k, scale=scale
-        )
+        result = evaluate_with_retrieval(memory_episodes, eval_episodes, memory, predictor, k=k)
         label = "appearance-only (scale=0.0)" if scale == 0.0 else f"action-conditioned (scale={scale})"
         rows.append((label, result["mean_error"]))
 

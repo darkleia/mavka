@@ -1,10 +1,11 @@
-from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
+from mavka.config import MavkaConfig
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
-from mavka.retrieval.fusion import ConcatFusionPredictor
-from mavka.pipeline import ActionConditionedPipeline
-from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.eval.retrieval_eval import evaluate_with_retrieval
 from mavka.index.flat import FlatIndex
+from mavka.memory import Memory
+from mavka.retrieval.fusion import ConcatFusionPredictor
+from mavka.retrieval.scorer import FixedWeightScorer
 
 
 def main() -> None:
@@ -30,9 +31,11 @@ def main() -> None:
         f"{len(memory_episodes)} memory, {len(eval_episodes)} eval\n"
     )
 
-    def new_pipeline():
-        return ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+
+    def new_memory(fetch_factor=5):
+        return Memory(
+            config, index=FlatIndex(dim=dim + action_dim), action_scale=scale, fetch_factor=fetch_factor
         )
 
     rows = []
@@ -44,23 +47,16 @@ def main() -> None:
     no_scorer_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
     no_scorer_predictor = ConcatFusionPredictor(no_scorer_adapter, alpha=1.0)
     no_scorer_result = evaluate_with_retrieval(
-        memory_episodes, eval_episodes, new_pipeline(), no_scorer_predictor, k=k, scale=scale
+        memory_episodes, eval_episodes, new_memory(), no_scorer_predictor, k=k
     )
     rows.append(("action-conditioned, no scorer", no_scorer_result["mean_error"]))
 
     scorer_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
-    scorer_pipeline = new_pipeline()
-    scorer = FixedWeightScorer(scorer_pipeline._log)
+    scorer_memory = new_memory(fetch_factor=fetch_factor)
+    scorer_memory.scorer = FixedWeightScorer(scorer_memory._log)
     scorer_predictor = ConcatFusionPredictor(scorer_adapter, alpha=1.0)
     scorer_result = evaluate_with_retrieval(
-        memory_episodes,
-        eval_episodes,
-        scorer_pipeline,
-        scorer_predictor,
-        k=k,
-        scale=scale,
-        scorer=scorer,
-        fetch_factor=fetch_factor,
+        memory_episodes, eval_episodes, scorer_memory, scorer_predictor, k=k
     )
     rows.append(("action-conditioned, with scorer", scorer_result["mean_error"]))
 
@@ -79,18 +75,11 @@ def main() -> None:
     ]
     for label, weights in ablation_weights:
         ablation_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
-        ablation_pipeline = new_pipeline()
-        ablation_scorer = FixedWeightScorer(ablation_pipeline._log, **weights)
+        ablation_memory = new_memory(fetch_factor=fetch_factor)
+        ablation_memory.scorer = FixedWeightScorer(ablation_memory._log, **weights)
         ablation_predictor = ConcatFusionPredictor(ablation_adapter, alpha=1.0)
         result = evaluate_with_retrieval(
-            memory_episodes,
-            eval_episodes,
-            ablation_pipeline,
-            ablation_predictor,
-            k=k,
-            scale=scale,
-            scorer=ablation_scorer,
-            fetch_factor=fetch_factor,
+            memory_episodes, eval_episodes, ablation_memory, ablation_predictor, k=k
         )
         print(f"{label:36} {result['mean_error']:12.6f}")
 

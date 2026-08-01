@@ -1,9 +1,12 @@
+import functools
+
 import numpy as np
 
+from mavka.config import MavkaConfig
 from mavka.graph.builder import EdgeBuilder
 from mavka.graph.expand import decay_for_depth, expand
 from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
-from mavka.pipeline import ActionConditionedPipeline, Pipeline
+from mavka.memory import Memory
 from mavka.retrieval.scorer import FixedWeightScorer
 from mavka.index.flat import FlatIndex
 
@@ -135,30 +138,33 @@ def test_determinism():
 def test_off_switch_end_to_end_matches_no_expansion():
     dim = 8
     action_dim = 2
-    graph = AdjacencyStore(degree=4)
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
-    # ActionConditionedPipeline has no graph wiring in observe(); build the
-    # graph independently to test recall_scored's own depth=0 off-switch.
-    scorer = FixedWeightScorer(pipeline._log)
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
 
     rng = np.random.default_rng(0)
-    for i in range(20):
-        pipeline.observe(
-            z=rng.standard_normal(dim).astype(np.float32),
-            action=rng.standard_normal(action_dim).astype(np.float32),
-            z_next=None,
-            episode_id=0,
-        )
+    zs = [rng.standard_normal(dim).astype(np.float32) for _ in range(20)]
+    actions = [rng.standard_normal(action_dim).astype(np.float32) for _ in range(20)]
+
+    # A graph is configured but expansion_depth=0 -- must behave exactly
+    # like no graph being configured at all: depth is the true off-switch.
+    graph = AdjacencyStore(degree=4)
+
+    memory_no_graph = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
+    memory_no_graph.scorer = FixedWeightScorer(memory_no_graph._log)
+
+    memory_graph_off = Memory(
+        config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0, graph=graph, expansion_depth=0
+    )
+    memory_graph_off.scorer = FixedWeightScorer(memory_graph_off._log)
+
+    for z, action in zip(zs, actions):
+        memory_no_graph.observe(z=z, action=action, z_next=None, episode_id=0)
+        memory_graph_off.observe(z=z, action=action, z_next=None, episode_id=0)
 
     query_z = rng.standard_normal(dim).astype(np.float32)
     query_action = rng.standard_normal(action_dim).astype(np.float32)
 
-    without_expand = pipeline.recall_scored(query_z, query_action, k=5, scorer=scorer)
-    with_expand_off = pipeline.recall_scored(
-        query_z, query_action, k=5, scorer=scorer, graph=graph, expand_depth=0
-    )
+    without_expand = memory_no_graph.recall(query_z, action=query_action, k=5)
+    with_expand_off = memory_graph_off.recall(query_z, action=query_action, k=5)
 
     assert without_expand == with_expand_off
 
@@ -167,19 +173,39 @@ def test_scoring_decay_ranks_seed_above_equal_similarity_depth_two_node():
     dim = 8
     graph = AdjacencyStore(degree=4)
     builder = EdgeBuilder(n_analogous=0, similarity_threshold=1.1, temporal_weight=1.0)
-    pipeline = Pipeline(dim=dim, index=FlatIndex(dim=dim), graph=graph, edge_builder=builder)
+    config = MavkaConfig(dim=dim)
+    memory = Memory(config, index=FlatIndex(dim=dim), action_scale=0.0)
 
-    ids = [
-        pipeline.observe(z=_rand(dim, i), action=None, z_next=None, episode_id=0) for i in range(3)
-    ]
+    # Memory has no built-in edge-building hook on observe() (unlike old
+    # Pipeline's graph=/edge_builder= constructor args) -- drive
+    # EdgeBuilder.on_insert manually after each observe(), same pattern
+    # used in test_edges.py.
+    ids = []
+    for i in range(3):
+        record_id = memory.observe(z=_rand(dim, i), action=None, z_next=None, episode_id=0)
+        graph.add_node()
+        record = memory.get(record_id)
+        builder.on_insert(
+            record_id,
+            record.z,
+            record.action,
+            record.episode_id,
+            record.seq_no,
+            memory._log,
+            memory._index,
+            graph,
+        )
+        ids.append(record_id)
     # ids[0] -> ids[1] -> ids[2], both temporal edges (weight 1.0 each).
 
-    scorer = FixedWeightScorer(pipeline._log, w_sim=1.0, w_action=0.0, w_recency=0.0)
-    query_z = pipeline.get(ids[0]).z
+    memory.scorer = FixedWeightScorer(memory._log, w_sim=1.0, w_action=0.0, w_recency=0.0)
+    memory.fetch_factor = 1
+    memory.graph = graph
+    memory.expansion_depth = 2
+    memory.expander = functools.partial(expand, max_nodes=10, edge_types=None)
 
-    ranked = pipeline.recall_scored(
-        query_z, None, k=3, scorer=scorer, fetch_factor=1, graph=graph, expand_depth=2, max_nodes=10
-    )
+    query_z = memory.get(ids[0]).z
+    ranked = memory.recall(query_z, action=None, k=3)
     ranked_ids = [id_ for id_, _ in ranked]
 
     assert ranked_ids.index(ids[0]) < ranked_ids.index(ids[2])

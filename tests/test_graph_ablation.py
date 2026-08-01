@@ -1,9 +1,13 @@
+import functools
+
 import numpy as np
 
 from mavka.adapter import SyntheticWorldModel
+from mavka.config import MavkaConfig
 from mavka.eval.experiment import CONDITION_NAMES, graph_helps, run_memory_experiment
 from mavka.graph.adjacency import EDGE_TEMPORAL, AdjacencyStore
-from mavka.pipeline import ActionConditionedPipeline
+from mavka.graph.expand import expand
+from mavka.memory import Memory
 from mavka.retrieval.scorer import FixedWeightScorer
 from mavka.index.flat import FlatIndex
 
@@ -12,17 +16,23 @@ def _rand(dim, seed):
     return np.random.default_rng(seed).standard_normal(dim).astype(np.float32)
 
 
-def test_use_graph_false_is_pre_graph_identity():
+def test_graph_off_is_pre_graph_identity():
+    # Memory has no use_graph override -- expansion_depth==0 is the sole
+    # off-switch. This proves it holds even with a graph fully wired up:
+    # a Memory with graph configured but expansion_depth=0 must match a
+    # Memory with no graph at all, exactly.
     dim = 8
     action_dim = 2
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
-    scorer = FixedWeightScorer(pipeline._log)
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
 
+    zs = [_rand(dim, i) for i in range(20)]
+    actions = [_rand(action_dim, i + 100) for i in range(20)]
+
+    memory_no_graph = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
+    memory_no_graph.scorer = FixedWeightScorer(memory_no_graph._log)
     ids = [
-        pipeline.observe(z=_rand(dim, i), action=_rand(action_dim, i + 100), z_next=None, episode_id=0)
-        for i in range(20)
+        memory_no_graph.observe(z=z, action=action, z_next=None, episode_id=0)
+        for z, action in zip(zs, actions)
     ]
 
     graph = AdjacencyStore(degree=4)
@@ -30,27 +40,36 @@ def test_use_graph_false_is_pre_graph_identity():
         graph.add_node()
     for i in range(len(ids) - 1):
         graph.add_edge(ids[i], ids[i + 1], weight=1.0, edge_type=EDGE_TEMPORAL)
+
+    memory_graph_off = Memory(
+        config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0, graph=graph, expansion_depth=0
+    )
+    memory_graph_off.scorer = FixedWeightScorer(memory_graph_off._log)
+    for z, action in zip(zs, actions):
+        memory_graph_off.observe(z=z, action=action, z_next=None, episode_id=0)
 
     query_z = _rand(dim, 999)
     query_action = _rand(action_dim, 998)
 
-    without_graph_param = pipeline.recall_scored(query_z, query_action, k=5, scorer=scorer)
-    with_graph_but_off = pipeline.recall_scored(
-        query_z, query_action, k=5, scorer=scorer, graph=graph, expand_depth=2, use_graph=False
-    )
+    without_graph_param = memory_no_graph.recall(query_z, action=query_action, k=5)
+    with_graph_but_off = memory_graph_off.recall(query_z, action=query_action, k=5)
 
     assert without_graph_param == with_graph_but_off
 
 
-def test_use_graph_true_differs_from_off_when_graph_has_edges():
+def test_graph_expansion_differs_from_off_when_graph_has_edges():
     dim = 8
     action_dim = 2
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+
+    zs = [_rand(dim, i) for i in range(10)]
+    actions = [_rand(action_dim, i + 50) for i in range(10)]
+
+    memory_off = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0, fetch_factor=1)
+    memory_off.scorer = FixedWeightScorer(memory_off._log, w_sim=1.0, w_action=0.0, w_recency=0.0)
     ids = [
-        pipeline.observe(z=_rand(dim, i), action=_rand(action_dim, i + 50), z_next=None, episode_id=0)
-        for i in range(10)
+        memory_off.observe(z=z, action=action, z_next=None, episode_id=0)
+        for z, action in zip(zs, actions)
     ]
 
     graph = AdjacencyStore(degree=4)
@@ -59,24 +78,24 @@ def test_use_graph_true_differs_from_off_when_graph_has_edges():
     for i in range(len(ids) - 1):
         graph.add_edge(ids[i], ids[i + 1], weight=1.0, edge_type=EDGE_TEMPORAL)
 
-    scorer = FixedWeightScorer(pipeline._log, w_sim=1.0, w_action=0.0, w_recency=0.0)
-    query_z = pipeline.get(ids[0]).z
-    query_action = pipeline.get(ids[0]).action
-
-    off_result = pipeline.recall_scored(
-        query_z, query_action, k=1, scorer=scorer, fetch_factor=1, graph=graph, use_graph=False
-    )
-    on_result = pipeline.recall_scored(
-        query_z,
-        query_action,
-        k=5,
-        scorer=scorer,
+    memory_on = Memory(
+        config,
+        index=FlatIndex(dim=dim + action_dim),
+        action_scale=1.0,
         fetch_factor=1,
         graph=graph,
-        expand_depth=2,
-        use_graph=True,
-        max_nodes=100,
+        expansion_depth=2,
+        expander=functools.partial(expand, max_nodes=100, edge_types=None),
     )
+    memory_on.scorer = FixedWeightScorer(memory_on._log, w_sim=1.0, w_action=0.0, w_recency=0.0)
+    for z, action in zip(zs, actions):
+        memory_on.observe(z=z, action=action, z_next=None, episode_id=0)
+
+    query_z = memory_off.get(ids[0]).z
+    query_action = memory_off.get(ids[0]).action
+
+    off_result = memory_off.recall(query_z, action=query_action, k=1)
+    on_result = memory_on.recall(query_z, action=query_action, k=5)
 
     off_ids = {id_ for id_, _ in off_result}
     on_ids = {id_ for id_, _ in on_result}

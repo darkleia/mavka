@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
-from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
+from mavka.config import MavkaConfig
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
-from mavka.retrieval.fusion import ConcatFusionPredictor
-from mavka.pipeline import ActionConditionedPipeline
+from mavka.eval.retrieval_eval import evaluate_gated, evaluate_with_retrieval
 from mavka.index.flat import FlatIndex
-from mavka.eval.retrieval_eval import evaluate_gated
+from mavka.memory import Memory
+from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.retrieval.trigger import SurpriseTrigger
 
 
@@ -84,13 +84,10 @@ def test_gated_evaluation_reports_rate_that_moves_with_lambda():
 
     def run_gated(lam):
         adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=60)
-        pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-        )
+        config = MavkaConfig(dim=dim, action_dim=action_dim)
+        memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
         trigger = SurpriseTrigger(smoothing=0.1, lam=lam, warmup=5)
-        return evaluate_gated(
-            memory_episodes, eval_episodes, pipeline, adapter, trigger, k=k, scale=1.0
-        )
+        return evaluate_gated(memory_episodes, eval_episodes, memory, adapter, trigger, k=k)
 
     low_lambda_result = run_gated(0.1)
     high_lambda_result = run_gated(5.0)
@@ -114,22 +111,18 @@ def test_low_lambda_matches_always_retrieve_exactly():
     ]
     memory_episodes, eval_episodes = split_episodes(all_episodes, holdout_frac=0.3, seed=61)
 
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+
     gated_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=61)
-    gated_pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    gated_memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
     trigger = SurpriseTrigger(smoothing=0.1, lam=-1000.0, warmup=0)
-    gated_result = evaluate_gated(
-        memory_episodes, eval_episodes, gated_pipeline, gated_adapter, trigger, k=k, scale=1.0
-    )
+    gated_result = evaluate_gated(memory_episodes, eval_episodes, gated_memory, gated_adapter, trigger, k=k)
 
     always_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=61)
-    always_pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    always_memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
     always_predictor = ConcatFusionPredictor(always_adapter, alpha=1.0)
     always_result = evaluate_with_retrieval(
-        memory_episodes, eval_episodes, always_pipeline, always_predictor, k=k, scale=1.0
+        memory_episodes, eval_episodes, always_memory, always_predictor, k=k
     )
 
     assert gated_result["retrieval_rate"] == 1.0
@@ -150,10 +143,9 @@ def test_high_lambda_approximately_matches_never_retrieve():
     ]
     memory_episodes, eval_episodes = split_episodes(all_episodes, holdout_frac=0.3, seed=62)
 
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
     gated_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=62)
-    gated_pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    gated_memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
     # A tiny warmup (not 0) is needed even at extreme lambda: the EMA
     # variance is still genuinely 0 after only one sample, so the very next
     # value would trivially "exceed" a std of 0 regardless of lambda -- this
@@ -161,9 +153,7 @@ def test_high_lambda_approximately_matches_never_retrieve():
     # lambda problem. A larger eval set dilutes the few unavoidable
     # cold-start triggers' effect on the mean.
     trigger = SurpriseTrigger(smoothing=0.1, lam=1000.0, warmup=2)
-    gated_result = evaluate_gated(
-        memory_episodes, eval_episodes, gated_pipeline, gated_adapter, trigger, k=k, scale=1.0
-    )
+    gated_result = evaluate_gated(memory_episodes, eval_episodes, gated_memory, gated_adapter, trigger, k=k)
 
     baseline_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=62)
     baseline_result = evaluate_no_memory(baseline_adapter, eval_episodes)
@@ -182,11 +172,10 @@ def test_determinism():
         memory_episodes, eval_episodes = split_episodes(all_episodes, holdout_frac=0.25, seed=63)
 
         adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=63)
-        pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-        )
+        config = MavkaConfig(dim=dim, action_dim=action_dim)
+        memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
         trigger = SurpriseTrigger(smoothing=0.1, lam=1.5, warmup=5)
-        return evaluate_gated(memory_episodes, eval_episodes, pipeline, adapter, trigger, k=5, scale=1.0)
+        return evaluate_gated(memory_episodes, eval_episodes, memory, adapter, trigger, k=5)
 
     result_a = run()
     result_b = run()

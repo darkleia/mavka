@@ -1,14 +1,18 @@
+import functools
+
 import numpy as np
 
-from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import generate_trajectory
+from mavka.config import MavkaConfig
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
-from mavka.graph.builder import EdgeBuilder
-from mavka.retrieval.fusion import ConcatFusionPredictor
+from mavka.eval.retrieval_eval import evaluate_with_retrieval
 from mavka.graph.adjacency import AdjacencyStore
-from mavka.pipeline import ActionConditionedPipeline, Pipeline
-from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.graph.builder import EdgeBuilder
+from mavka.graph.expand import expand
 from mavka.index.flat import FlatIndex
+from mavka.memory import Memory
+from mavka.retrieval.fusion import ConcatFusionPredictor
+from mavka.retrieval.scorer import FixedWeightScorer
 
 CONDITION_NAMES = [
     "no_memory",
@@ -38,22 +42,36 @@ _DEFAULT_CONFIG = {
 }
 
 
-def _new_pipeline(dim, action_dim, scale):
-    return ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
+def _new_memory(
+    dim, action_dim, scale, fetch_factor=5, graph=None, expansion_depth=0, expander=None
+) -> Memory:
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+    index_dim = dim if scale == 0.0 else dim + action_dim
+    return Memory(
+        config,
+        index=FlatIndex(dim=index_dim),
+        action_scale=scale,
+        fetch_factor=fetch_factor,
+        graph=graph,
+        expansion_depth=expansion_depth,
+        expander=expander,
     )
 
 
 def _build_graph(dim, action_dim, memory_episodes, cfg) -> AdjacencyStore:
     """Build the temporal + analogous edge graph for this seed's memory
-    set. Uses its own throwaway plain (z-only) Pipeline purely for the
-    side effect of running EdgeBuilder.on_insert in the right order --
-    analogous search is z-only by design (see edges.py), independent of
-    whatever action-conditioned pipeline is used for retrieval elsewhere
-    in this experiment. Node ids still line up with the retrieval
-    pipeline's record ids, since both are built by observing the exact
-    same memory_episodes in the exact same order, and ids are assigned
-    purely by insertion sequence.
+    set, against its own throwaway z-only (action_scale=0) Memory
+    instance -- analogous search is z-only by design (see
+    graph/builder.py), independent of whatever action-conditioned memory
+    is used for retrieval elsewhere in this experiment. Node ids still
+    line up with the retrieval memory's record ids, since both are built
+    by observing the exact same memory_episodes in the exact same order,
+    and ids are assigned purely by insertion sequence.
+
+    Memory itself has no built-in edge-building hook on observe() (unlike
+    old Pipeline's graph=/edge_builder= constructor args) -- this helper
+    drives EdgeBuilder.on_insert itself, once per observed record, using
+    that throwaway memory's own log/index directly.
     """
     graph = AdjacencyStore(degree=cfg["graph_degree"])
     edge_builder = EdgeBuilder(
@@ -61,21 +79,28 @@ def _build_graph(dim, action_dim, memory_episodes, cfg) -> AdjacencyStore:
         similarity_threshold=cfg["similarity_threshold"],
         temporal_weight=cfg["temporal_weight"],
     )
-    graph_pipeline = Pipeline(
-        dim=dim,
-        action_dim=action_dim,
-        index=FlatIndex(dim=dim),
-        graph=graph,
-        edge_builder=edge_builder,
-    )
+    graph_memory = _new_memory(dim, action_dim, scale=0.0)
+
     for episode in memory_episodes:
         for step in episode:
-            graph_pipeline.observe(
+            record_id = graph_memory.observe(
                 z=step["z"],
                 action=step["action"],
                 z_next=step["z_next"],
                 pred_err=step["pred_err"],
                 episode_id=step["episode_id"],
+            )
+            graph.add_node()  # kept in lockstep with record_id by construction
+            record = graph_memory.get(record_id)
+            edge_builder.on_insert(
+                record_id,
+                record.z,
+                record.action,
+                record.episode_id,
+                record.seq_no,
+                graph_memory._log,
+                graph_memory._index,
+                graph,
             )
     return graph
 
@@ -116,10 +141,9 @@ def run_memory_experiment(
       full_system_graph_depth1,
       full_system_graph_depth2    -- full_system's own best alpha (held
                                       fixed, not re-swept) plus graph
-                                      expansion via recall_scored's
-                                      use_graph=True switch at depth 1 or
-                                      2 -- the graph is the *only* thing
-                                      that differs from full_system_no_graph,
+                                      expansion at depth 1 or 2 -- the
+                                      graph is the *only* thing that
+                                      differs from full_system_no_graph,
                                       isolating its marginal contribution.
 
     adapter supplies dim/action_dim/class only -- a fresh instance of
@@ -159,38 +183,31 @@ def run_memory_experiment(
 
         # 2. appearance-only (scale=0), fused at a fixed alpha
         appearance_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
-        appearance_pipeline = _new_pipeline(dim, action_dim, scale=0.0)
+        appearance_memory = _new_memory(dim, action_dim, scale=0.0)
         appearance_predictor = ConcatFusionPredictor(appearance_adapter, alpha=cfg["fusion_alpha"])
         appearance_result = evaluate_with_retrieval(
-            memory_episodes, eval_episodes, appearance_pipeline, appearance_predictor, k=k, scale=0.0
+            memory_episodes, eval_episodes, appearance_memory, appearance_predictor, k=k
         )
         per_seed_errors["appearance_only"].append(appearance_result["mean_error"])
         per_seed_n_steps["appearance_only"].append(appearance_result["n_steps"])
 
         # 3. action-conditioned (scale>0), no scorer, fused at a fixed alpha
         action_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
-        action_pipeline = _new_pipeline(dim, action_dim, scale=cfg["scale"])
+        action_memory = _new_memory(dim, action_dim, scale=cfg["scale"])
         action_predictor = ConcatFusionPredictor(action_adapter, alpha=cfg["fusion_alpha"])
         action_result = evaluate_with_retrieval(
-            memory_episodes, eval_episodes, action_pipeline, action_predictor, k=k, scale=cfg["scale"]
+            memory_episodes, eval_episodes, action_memory, action_predictor, k=k
         )
         per_seed_errors["action_conditioned"].append(action_result["mean_error"])
         per_seed_n_steps["action_conditioned"].append(action_result["n_steps"])
 
         # 4. action-conditioned + scorer, fused at a fixed alpha
         scorer_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
-        scorer_pipeline = _new_pipeline(dim, action_dim, scale=cfg["scale"])
-        scorer = FixedWeightScorer(scorer_pipeline._log, **cfg["scorer_weights"])
+        scorer_memory = _new_memory(dim, action_dim, scale=cfg["scale"], fetch_factor=cfg["fetch_factor"])
+        scorer_memory.scorer = FixedWeightScorer(scorer_memory._log, **cfg["scorer_weights"])
         scorer_predictor = ConcatFusionPredictor(scorer_adapter, alpha=cfg["fusion_alpha"])
         scorer_result = evaluate_with_retrieval(
-            memory_episodes,
-            eval_episodes,
-            scorer_pipeline,
-            scorer_predictor,
-            k=k,
-            scale=cfg["scale"],
-            scorer=scorer,
-            fetch_factor=cfg["fetch_factor"],
+            memory_episodes, eval_episodes, scorer_memory, scorer_predictor, k=k
         )
         per_seed_errors["action_conditioned_scorer"].append(scorer_result["mean_error"])
         per_seed_n_steps["action_conditioned_scorer"].append(scorer_result["n_steps"])
@@ -201,18 +218,11 @@ def run_memory_experiment(
         best_alpha = None
         for alpha in cfg["alpha_grid"]:
             full_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
-            full_pipeline = _new_pipeline(dim, action_dim, scale=cfg["scale"])
-            full_scorer = FixedWeightScorer(full_pipeline._log, **cfg["scorer_weights"])
+            full_memory = _new_memory(dim, action_dim, scale=cfg["scale"], fetch_factor=cfg["fetch_factor"])
+            full_memory.scorer = FixedWeightScorer(full_memory._log, **cfg["scorer_weights"])
             full_predictor = ConcatFusionPredictor(full_adapter, alpha=alpha)
             full_result = evaluate_with_retrieval(
-                memory_episodes,
-                eval_episodes,
-                full_pipeline,
-                full_predictor,
-                k=k,
-                scale=cfg["scale"],
-                scorer=full_scorer,
-                fetch_factor=cfg["fetch_factor"],
+                memory_episodes, eval_episodes, full_memory, full_predictor, k=k
             )
             if best_error is None or full_result["mean_error"] < best_error:
                 best_error = full_result["mean_error"]
@@ -234,22 +244,19 @@ def run_memory_experiment(
         graph = _build_graph(dim, action_dim, memory_episodes, cfg)
         for depth in GRAPH_DEPTHS:
             depth_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
-            depth_pipeline = _new_pipeline(dim, action_dim, scale=cfg["scale"])
-            depth_scorer = FixedWeightScorer(depth_pipeline._log, **cfg["scorer_weights"])
-            depth_predictor = ConcatFusionPredictor(depth_adapter, alpha=best_alpha)
-            depth_result = evaluate_with_retrieval(
-                memory_episodes,
-                eval_episodes,
-                depth_pipeline,
-                depth_predictor,
-                k=k,
+            depth_memory = _new_memory(
+                dim,
+                action_dim,
                 scale=cfg["scale"],
-                scorer=depth_scorer,
                 fetch_factor=cfg["fetch_factor"],
                 graph=graph,
-                use_graph=True,
-                expand_depth=depth,
-                max_nodes=cfg["max_nodes"],
+                expansion_depth=depth,
+                expander=functools.partial(expand, max_nodes=cfg["max_nodes"], edge_types=None),
+            )
+            depth_memory.scorer = FixedWeightScorer(depth_memory._log, **cfg["scorer_weights"])
+            depth_predictor = ConcatFusionPredictor(depth_adapter, alpha=best_alpha)
+            depth_result = evaluate_with_retrieval(
+                memory_episodes, eval_episodes, depth_memory, depth_predictor, k=k
             )
             name = f"full_system_graph_depth{depth}"
             per_seed_errors[name].append(depth_result["mean_error"])

@@ -4,11 +4,12 @@ import numpy as np
 import pytest
 
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
+from mavka.config import MavkaConfig
 from mavka.eval.baseline import split_episodes
 from mavka.lifecycle.eviction import EvictionPolicy
 from mavka.lifecycle.feedback import FeedbackBuffer, drain_feedback
 from mavka.storage.log import AppendLog
-from mavka.pipeline import ActionConditionedPipeline
+from mavka.memory import Memory
 from mavka.index.flat import FlatIndex
 from mavka.eval.retrieval_eval import evaluate_gated
 from mavka.retrieval.trigger import SurpriseTrigger
@@ -178,9 +179,8 @@ def test_gated_off_steps_record_nothing():
     memory_episodes, eval_episodes = split_episodes(all_episodes, holdout_frac=0.3, seed=70)
 
     adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=70)
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+    memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
     # High lam -> most steps are gated off (never retrieve).
     trigger = SurpriseTrigger(smoothing=0.1, lam=1000.0, warmup=0)
     buffer = FeedbackBuffer()
@@ -188,11 +188,10 @@ def test_gated_off_steps_record_nothing():
     result = evaluate_gated(
         memory_episodes,
         eval_episodes,
-        pipeline,
+        memory,
         adapter,
         trigger,
         k=k,
-        scale=1.0,
         feedback_buffer=buffer,
     )
 

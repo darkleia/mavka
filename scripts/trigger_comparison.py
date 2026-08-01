@@ -1,10 +1,10 @@
-from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
+from mavka.config import MavkaConfig
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
-from mavka.retrieval.fusion import ConcatFusionPredictor
-from mavka.pipeline import ActionConditionedPipeline
+from mavka.eval.retrieval_eval import evaluate_gated, evaluate_with_retrieval
 from mavka.index.flat import FlatIndex
-from mavka.eval.retrieval_eval import evaluate_gated
+from mavka.memory import Memory
+from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.retrieval.trigger import SurpriseTrigger
 
 
@@ -30,10 +30,10 @@ def main() -> None:
         f"{len(memory_episodes)} memory, {len(eval_episodes)} eval\n"
     )
 
-    def new_pipeline():
-        return ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
-        )
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+
+    def new_memory():
+        return Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=scale)
 
     rows = []
 
@@ -45,7 +45,7 @@ def main() -> None:
         gated_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
         trigger = SurpriseTrigger(smoothing=0.1, lam=lam, warmup=10)
         gated_result = evaluate_gated(
-            memory_episodes, eval_episodes, new_pipeline(), gated_adapter, trigger, k=k, scale=scale
+            memory_episodes, eval_episodes, new_memory(), gated_adapter, trigger, k=k
         )
         rows.append(
             (f"gated (lambda={lam})", gated_result["mean_error"], gated_result["retrieval_rate"])
@@ -54,7 +54,7 @@ def main() -> None:
     always_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
     always_predictor = ConcatFusionPredictor(always_adapter, alpha=1.0)
     always_result = evaluate_with_retrieval(
-        memory_episodes, eval_episodes, new_pipeline(), always_predictor, k=k, scale=scale
+        memory_episodes, eval_episodes, new_memory(), always_predictor, k=k
     )
     rows.append(("always retrieve", always_result["mean_error"], 1.0))
 

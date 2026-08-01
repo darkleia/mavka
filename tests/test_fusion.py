@@ -1,13 +1,14 @@
 import numpy as np
 
-from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
+from mavka.config import MavkaConfig
+from mavka.core.distance import normalize
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
+from mavka.eval.retrieval_eval import evaluate_with_retrieval
+from mavka.index.flat import FlatIndex
+from mavka.memory import Memory
 from mavka.retrieval.fusion import ConcatFusionPredictor, build_context
 from mavka.storage.log import AppendLog
-from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import FlatIndex
-from mavka.core.distance import normalize
 
 
 def _rand(dim, seed):
@@ -90,13 +91,10 @@ def test_alpha_zero_matches_no_memory_baseline_exactly():
     baseline_result = evaluate_no_memory(baseline_adapter, eval_episodes)
 
     fusion_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=40)
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+    memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
     predictor = ConcatFusionPredictor(fusion_adapter, alpha=0.0)
-    fusion_result = evaluate_with_retrieval(
-        memory_episodes, eval_episodes, pipeline, predictor, k=k, scale=1.0
-    )
+    fusion_result = evaluate_with_retrieval(memory_episodes, eval_episodes, memory, predictor, k=k)
 
     assert fusion_result["mean_error"] == baseline_result["mean_error"]
     assert fusion_result["errors"] == baseline_result["errors"]
@@ -194,14 +192,11 @@ def test_end_to_end_fusion_evaluation():
     memory_episodes, eval_episodes = split_episodes(all_episodes, holdout_frac=0.3, seed=50)
 
     eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=50)
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+    memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0)
     predictor = ConcatFusionPredictor(eval_adapter, alpha=0.5)
 
-    result = evaluate_with_retrieval(
-        memory_episodes, eval_episodes, pipeline, predictor, k=k, scale=1.0
-    )
+    result = evaluate_with_retrieval(memory_episodes, eval_episodes, memory, predictor, k=k)
 
     assert set(result.keys()) >= {"mean_error", "median_error", "p90_error", "n_steps", "errors"}
     assert result["n_steps"] == sum(len(ep) for ep in eval_episodes)

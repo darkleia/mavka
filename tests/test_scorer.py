@@ -1,13 +1,14 @@
 import numpy as np
 
-from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
+from mavka.config import MavkaConfig
 from mavka.eval.baseline import split_episodes
-from mavka.retrieval.fusion import ConcatFusionPredictor
-from mavka.storage.log import AppendLog
-from mavka.pipeline import ActionConditionedPipeline
-from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.eval.retrieval_eval import evaluate_with_retrieval
 from mavka.index.flat import FlatIndex
+from mavka.memory import Memory
+from mavka.retrieval.fusion import ConcatFusionPredictor
+from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.storage.log import AppendLog
 
 
 def _rand(dim, seed):
@@ -109,16 +110,13 @@ def test_determinism():
 def test_recall_scored_returns_k_results():
     dim = 8
     action_dim = 2
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+    memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0, fetch_factor=3)
     for i in range(20):
-        pipeline.observe(z=_rand(dim, i), action=_rand(action_dim, i + 100), z_next=None)
+        memory.observe(z=_rand(dim, i), action=_rand(action_dim, i + 100), z_next=None)
 
-    scorer = FixedWeightScorer(pipeline._log)
-    results = pipeline.recall_scored(
-        _rand(dim, 999), _rand(action_dim, 998), k=5, scorer=scorer, fetch_factor=3
-    )
+    memory.scorer = FixedWeightScorer(memory._log)
+    results = memory.recall(_rand(dim, 999), action=_rand(action_dim, 998), k=5)
     assert len(results) == 5
 
 
@@ -136,22 +134,12 @@ def test_recall_scored_end_to_end_with_evaluate_with_retrieval():
     memory_episodes, eval_episodes = split_episodes(all_episodes, holdout_frac=0.3, seed=30)
 
     eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=30)
-    pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
-    )
-    scorer = FixedWeightScorer(pipeline._log)
+    config = MavkaConfig(dim=dim, action_dim=action_dim)
+    memory = Memory(config, index=FlatIndex(dim=dim + action_dim), action_scale=1.0, fetch_factor=3)
+    memory.scorer = FixedWeightScorer(memory._log)
     predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
 
-    result = evaluate_with_retrieval(
-        memory_episodes,
-        eval_episodes,
-        pipeline,
-        predictor,
-        k=k,
-        scale=1.0,
-        scorer=scorer,
-        fetch_factor=3,
-    )
+    result = evaluate_with_retrieval(memory_episodes, eval_episodes, memory, predictor, k=k)
 
     assert result["n_steps"] == sum(len(ep) for ep in eval_episodes)
     assert result["mean_error"] > 0
