@@ -5,16 +5,30 @@ from mavka.keying import make_keys_batch
 
 
 def evaluate_with_retrieval(
-    adapter, memory_episodes, eval_episodes, pipeline, k: int, scale: float
+    adapter,
+    memory_episodes,
+    eval_episodes,
+    pipeline,
+    k: int,
+    scale: float,
+    scorer=None,
+    fetch_factor: int = 5,
 ) -> dict:
     """Fill pipeline's memory from memory_episodes (keyed at the given
     scale), then for each held-out eval step, retrieve the k nearest past
     experiences and predict z_next as the plain mean of what actually
     followed those experiences (via the log's next_in_episode) -- no
-    fusion, no scoring, deliberately dumb. adapter is used only as a
-    fallback (adapter.step) for the rare step where none of the k
-    retrieved neighbors have a next state at all (e.g. an empty pipeline,
-    or every match being the last step of its episode).
+    fusion, deliberately dumb. adapter is used only as a fallback
+    (adapter.step) for the rare step where none of the k retrieved
+    neighbors have a next state at all (e.g. an empty pipeline, or every
+    match being the last step of its episode).
+
+    If scorer is given, candidates are fetched via the pipeline's two-stage
+    recall_scored (over-fetch k * fetch_factor by raw similarity, then
+    re-rank with scorer) instead of the plain recall -- the prediction rule
+    itself is unchanged either way, so any difference in error is
+    attributable to which candidates got selected, not to a different
+    predictor.
     """
     pipeline.scale = scale
 
@@ -41,7 +55,12 @@ def evaluate_with_retrieval(
     errors = []
     for episode in eval_episodes:
         for step in episode:
-            results = pipeline.recall(step["z"], step["action"], k)
+            if scorer is not None:
+                results = pipeline.recall_scored(
+                    step["z"], step["action"], k, scorer, fetch_factor=fetch_factor
+                )
+            else:
+                results = pipeline.recall(step["z"], step["action"], k)
 
             next_zs = []
             for id_, _score in results:

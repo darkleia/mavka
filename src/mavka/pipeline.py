@@ -119,6 +119,17 @@ class ActionConditionedPipeline:
         query_key = make_key(query_z, action, self.scale, self.action_dim)
         return self._index.search(query_key, k)
 
+    def recall_scored(
+        self, query_z, action, k: int, scorer, fetch_factor: int = 5
+    ) -> list[tuple[int, float]]:
+        """Two-stage recall: over-fetch k * fetch_factor candidates by raw
+        key similarity (the plain recall() above), re-rank them with
+        scorer.score(), and keep the top k.
+        """
+        candidates = self.recall(query_z, action, k * fetch_factor)
+        ranked = scorer.score(candidates, action)
+        return ranked[:k]
+
     def get(self, id: int) -> Experience:
         return self._log.get(id)
 
