@@ -90,6 +90,7 @@ class Pipeline:
         expand_depth: int = 0,
         max_nodes: int = 50,
         edge_types=None,
+        use_graph: bool | None = None,
     ) -> list[tuple[int, float]]:
         """Two-stage recall on the plain z-only index: over-fetch
         k * fetch_factor candidates, optionally expand them over graph
@@ -100,10 +101,22 @@ class Pipeline:
         (query_z, action, k, scorer, ...) rather than this class's own
         recall(query_z, k, action=...), so callers like
         evaluate_with_retrieval work unchanged against either pipeline.
+
+        use_graph is a single, unambiguous on/off switch for the whole
+        expansion stage, independent of expand_depth's numeric value:
+        True runs expansion at expand_depth (which must be > 0 to do
+        anything); False always skips it, even if expand_depth and graph
+        are otherwise set -- useful for an ablation that wants to hold
+        every other setting (including which depth to use once "on")
+        fixed and vary only whether expansion runs. Left at its default,
+        None, existing behavior is unchanged: expansion runs iff
+        expand_depth > 0, exactly as before this switch existed.
         """
         candidates = self.recall(query_z, k * fetch_factor, action=action)
 
-        if graph is not None and expand_depth > 0:
+        effective_use_graph = (expand_depth > 0) if use_graph is None else use_graph
+
+        if graph is not None and effective_use_graph and expand_depth > 0:
             seed_scores = dict(candidates)
             expanded = expand(
                 list(seed_scores.keys()),
@@ -192,6 +205,7 @@ class ActionConditionedPipeline:
         expand_depth: int = 0,
         max_nodes: int = 50,
         edge_types=None,
+        use_graph: bool | None = None,
     ) -> list[tuple[int, float]]:
         """Two-stage recall: over-fetch k * fetch_factor candidates by raw
         key similarity (the plain recall() above), re-rank them with
@@ -209,10 +223,18 @@ class ActionConditionedPipeline:
         strength, depth-2 at a quarter, and so on. expand_depth=0 (the
         default) reproduces the exact pre-expansion behavior: graph is
         simply never consulted.
+
+        use_graph is a single, unambiguous on/off switch for the whole
+        expansion stage, independent of expand_depth's numeric value: see
+        Pipeline.recall_scored's docstring for the full rationale. Left at
+        its default, None, existing behavior is unchanged: expansion runs
+        iff expand_depth > 0.
         """
         candidates = self.recall(query_z, action, k * fetch_factor)
 
-        if graph is not None and expand_depth > 0:
+        effective_use_graph = (expand_depth > 0) if use_graph is None else use_graph
+
+        if graph is not None and effective_use_graph and expand_depth > 0:
             seed_scores = dict(candidates)
             expanded = expand(
                 list(seed_scores.keys()),

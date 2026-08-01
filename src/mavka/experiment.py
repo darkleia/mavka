@@ -3,8 +3,10 @@ import numpy as np
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import generate_trajectory
 from mavka.baseline import evaluate_no_memory, split_episodes
+from mavka.edges import EdgeBuilder
 from mavka.fusion import ConcatFusionPredictor
-from mavka.pipeline import ActionConditionedPipeline
+from mavka.graph import AdjacencyStore
+from mavka.pipeline import ActionConditionedPipeline, Pipeline
 from mavka.scorer import FixedWeightScorer
 from mavka.store import VectorStore
 
@@ -14,8 +16,12 @@ CONDITION_NAMES = [
     "action_conditioned",
     "action_conditioned_scorer",
     "full_system",
+    "full_system_no_graph",
+    "full_system_graph_depth1",
+    "full_system_graph_depth2",
 ]
 BASELINE_CONDITION = "no_memory"
+GRAPH_DEPTHS = (1, 2)
 
 _DEFAULT_CONFIG = {
     "holdout_frac": 0.2,
@@ -24,6 +30,11 @@ _DEFAULT_CONFIG = {
     "alpha_grid": [0.0, 0.1, 0.25, 0.5, 0.75, 1.0],
     "scorer_weights": {"w_sim": 1.0, "w_action": 0.5, "w_recency": 0.2},
     "fetch_factor": 5,
+    "graph_degree": 8,
+    "n_analogous": 4,
+    "similarity_threshold": 0.3,
+    "temporal_weight": 1.0,
+    "max_nodes": 200,
 }
 
 
@@ -31,6 +42,42 @@ def _new_pipeline(dim, action_dim, scale):
     return ActionConditionedPipeline(
         dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
     )
+
+
+def _build_graph(dim, action_dim, memory_episodes, cfg) -> AdjacencyStore:
+    """Build the temporal + analogous edge graph for this seed's memory
+    set. Uses its own throwaway plain (z-only) Pipeline purely for the
+    side effect of running EdgeBuilder.on_insert in the right order --
+    analogous search is z-only by design (see edges.py), independent of
+    whatever action-conditioned pipeline is used for retrieval elsewhere
+    in this experiment. Node ids still line up with the retrieval
+    pipeline's record ids, since both are built by observing the exact
+    same memory_episodes in the exact same order, and ids are assigned
+    purely by insertion sequence.
+    """
+    graph = AdjacencyStore(degree=cfg["graph_degree"])
+    edge_builder = EdgeBuilder(
+        n_analogous=cfg["n_analogous"],
+        similarity_threshold=cfg["similarity_threshold"],
+        temporal_weight=cfg["temporal_weight"],
+    )
+    graph_pipeline = Pipeline(
+        dim=dim,
+        action_dim=action_dim,
+        index=VectorStore(dim=dim),
+        graph=graph,
+        edge_builder=edge_builder,
+    )
+    for episode in memory_episodes:
+        for step in episode:
+            graph_pipeline.observe(
+                z=step["z"],
+                action=step["action"],
+                z_next=step["z_next"],
+                pred_err=step["pred_err"],
+                episode_id=step["episode_id"],
+            )
+    return graph
 
 
 def run_memory_experiment(
@@ -59,6 +106,21 @@ def run_memory_experiment(
                                       to no_memory) is always included in
                                       the grid, this condition can never
                                       end up worse than the baseline.
+      full_system_no_graph        -- exactly full_system's result (same
+                                      config, same alpha), just labeled
+                                      separately so the graph-ablation
+                                      conditions below have a same-name-
+                                      family baseline to compare against
+                                      without having to reference
+                                      full_system by a different name.
+      full_system_graph_depth1,
+      full_system_graph_depth2    -- full_system's own best alpha (held
+                                      fixed, not re-swept) plus graph
+                                      expansion via recall_scored's
+                                      use_graph=True switch at depth 1 or
+                                      2 -- the graph is the *only* thing
+                                      that differs from full_system_no_graph,
+                                      isolating its marginal contribution.
 
     adapter supplies dim/action_dim/class only -- a fresh instance of
     type(adapter) is constructed per seed (for trajectory generation and
@@ -136,6 +198,7 @@ def run_memory_experiment(
         # 5. full system: action-conditioned + scorer, alpha swept, best kept
         best_error = None
         best_n_steps = None
+        best_alpha = None
         for alpha in cfg["alpha_grid"]:
             full_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
             full_pipeline = _new_pipeline(dim, action_dim, scale=cfg["scale"])
@@ -154,8 +217,43 @@ def run_memory_experiment(
             if best_error is None or full_result["mean_error"] < best_error:
                 best_error = full_result["mean_error"]
                 best_n_steps = full_result["n_steps"]
+                best_alpha = alpha
         per_seed_errors["full_system"].append(best_error)
         per_seed_n_steps["full_system"].append(best_n_steps)
+
+        # full_system_no_graph is exactly full_system's own result -- same
+        # config, same already-found best alpha -- just labeled separately
+        # so the graph-ablation conditions have a same-family name to
+        # compare against in the report.
+        per_seed_errors["full_system_no_graph"].append(best_error)
+        per_seed_n_steps["full_system_no_graph"].append(best_n_steps)
+
+        # 6/7. full system + graph, at full_system's own best alpha (held
+        # fixed, not re-swept) -- the graph is the only thing that varies
+        # relative to full_system_no_graph.
+        graph = _build_graph(dim, action_dim, memory_episodes, cfg)
+        for depth in GRAPH_DEPTHS:
+            depth_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
+            depth_pipeline = _new_pipeline(dim, action_dim, scale=cfg["scale"])
+            depth_scorer = FixedWeightScorer(depth_pipeline._log, **cfg["scorer_weights"])
+            depth_predictor = ConcatFusionPredictor(depth_adapter, alpha=best_alpha)
+            depth_result = evaluate_with_retrieval(
+                memory_episodes,
+                eval_episodes,
+                depth_pipeline,
+                depth_predictor,
+                k=k,
+                scale=cfg["scale"],
+                scorer=depth_scorer,
+                fetch_factor=cfg["fetch_factor"],
+                graph=graph,
+                use_graph=True,
+                expand_depth=depth,
+                max_nodes=cfg["max_nodes"],
+            )
+            name = f"full_system_graph_depth{depth}"
+            per_seed_errors[name].append(depth_result["mean_error"])
+            per_seed_n_steps[name].append(depth_result["n_steps"])
 
     baseline_mean = float(np.mean(per_seed_errors[BASELINE_CONDITION]))
 
@@ -202,23 +300,45 @@ def format_experiment_report(results: dict) -> str:
     return "\n".join(lines)
 
 
-def memory_helps(results: dict, min_improvement: float = 0.0, require_significance: bool = True) -> bool:
-    """True only if the full system's mean error is below the baseline's by
-    at least min_improvement, AND (if require_significance) that gap is
-    larger than the combined per-seed std of the two conditions -- a crude
-    check that the improvement isn't just seed-to-seed noise.
+def _significant_improvement(
+    reference: dict, candidate: dict, min_improvement: float, require_significance: bool
+) -> bool:
+    """Shared significance guard: candidate's mean_error must be below
+    reference's by at least min_improvement, and (if require_significance)
+    that gap must exceed the two conditions' combined per-seed std -- a
+    crude check that the improvement isn't just seed-to-seed noise.
     """
-    conditions = results["conditions"]
-    baseline = conditions[results["baseline_condition"]]
-    full = conditions["full_system"]
-
-    gap = baseline["mean_error"] - full["mean_error"]
+    gap = reference["mean_error"] - candidate["mean_error"]
     if gap < min_improvement:
         return False
 
     if require_significance:
-        combined_std = baseline["std_error"] + full["std_error"]
+        combined_std = reference["std_error"] + candidate["std_error"]
         if gap <= combined_std:
             return False
 
     return True
+
+
+def memory_helps(results: dict, min_improvement: float = 0.0, require_significance: bool = True) -> bool:
+    """True only if the full system's mean error is significantly below
+    the no-memory baseline's (see _significant_improvement)."""
+    conditions = results["conditions"]
+    baseline = conditions[results["baseline_condition"]]
+    full = conditions["full_system"]
+    return _significant_improvement(baseline, full, min_improvement, require_significance)
+
+
+def graph_helps(
+    results: dict, depth: int = 2, min_improvement: float = 0.0, require_significance: bool = True
+) -> bool:
+    """True only if full_system_graph_depth{depth}'s mean error is
+    significantly below full_system_no_graph's (see
+    _significant_improvement) -- isolates the graph's own marginal
+    contribution on top of the rest of the full system, which is held
+    fixed (same alpha, same scale, same scorer weights) between the two.
+    """
+    conditions = results["conditions"]
+    no_graph = conditions["full_system_no_graph"]
+    with_graph = conditions[f"full_system_graph_depth{depth}"]
+    return _significant_improvement(no_graph, with_graph, min_improvement, require_significance)

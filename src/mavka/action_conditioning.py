@@ -18,6 +18,7 @@ def evaluate_with_retrieval(
     expand_depth: int = 0,
     max_nodes: int = 50,
     edge_types=None,
+    use_graph: bool | None = None,
 ) -> dict:
     """Fill pipeline's memory from memory_episodes (keyed at the given
     scale), then for each held-out eval step, retrieve the k nearest past
@@ -32,7 +33,11 @@ def evaluate_with_retrieval(
     re-rank with scorer) instead of the plain recall. If graph and
     expand_depth > 0 are also given, recall_scored's graph-expansion stage
     runs too (see Pipeline.recall_scored); expand_depth=0 (the default)
-    never touches the graph, reproducing prior behavior exactly.
+    never touches the graph, reproducing prior behavior exactly. use_graph
+    is the clean on/off alias documented on recall_scored -- pass it
+    explicitly to force expansion on or off independent of expand_depth's
+    numeric value (e.g. to hold expand_depth=2 configured but still
+    compare a use_graph=False run against it).
     """
     pipeline.scale = scale
 
@@ -70,6 +75,7 @@ def evaluate_with_retrieval(
                     expand_depth=expand_depth,
                     max_nodes=max_nodes,
                     edge_types=edge_types,
+                    use_graph=use_graph,
                 )
             else:
                 results = pipeline.recall(step["z"], step["action"], k)
