@@ -4,7 +4,8 @@ from mavka.eval.baseline import evaluate_no_memory, split_episodes
 from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.index.flat import FlatIndex
-from mavka.retrieval.trigger import SurpriseTrigger, evaluate_gated
+from mavka.eval.retrieval_eval import evaluate_gated
+from mavka.retrieval.trigger import SurpriseTrigger
 
 
 def main() -> None:

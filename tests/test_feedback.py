@@ -10,7 +10,8 @@ from mavka.lifecycle.feedback import FeedbackBuffer, drain_feedback
 from mavka.storage.log import AppendLog
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.index.flat import FlatIndex
-from mavka.retrieval.trigger import SurpriseTrigger, evaluate_gated
+from mavka.eval.retrieval_eval import evaluate_gated
+from mavka.retrieval.trigger import SurpriseTrigger
 
 NOW_NS = 1_000_000_000_000
 SECOND_NS = 10**9
