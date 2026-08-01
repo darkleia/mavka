@@ -1,6 +1,6 @@
 import numpy as np
 
-from mavka import FlatIndex
+from mavka.index.flat import FlatIndex
 from mavka.eval.sweep import evaluate, recall_at_k
 
 

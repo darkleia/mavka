@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mavka import FlatIndex
+from mavka.index.flat import FlatIndex
 from mavka.core.distance import normalize
 
 

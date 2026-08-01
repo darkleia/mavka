@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mavka import FlatIndex
+from mavka.index.flat import FlatIndex
 
 GOLDEN_PATH = Path(__file__).parent / "golden" / "search_results.json"
 DIM = 64

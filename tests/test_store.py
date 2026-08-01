@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mavka import FlatIndex
+from mavka.index.flat import FlatIndex
 
 
 def test_empty_store_has_count_zero():
