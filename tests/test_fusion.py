@@ -2,11 +2,11 @@ import numpy as np
 
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
-from mavka.baseline import evaluate_no_memory, split_episodes
-from mavka.fusion import ConcatFusionPredictor, build_context
-from mavka.log import AppendLog
+from mavka.eval.baseline import evaluate_no_memory, split_episodes
+from mavka.retrieval.fusion import ConcatFusionPredictor, build_context
+from mavka.storage.log import AppendLog
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.store import VectorStore, normalize
+from mavka.index.flat import VectorStore, normalize
 
 
 def _rand(dim, seed):

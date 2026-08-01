@@ -1,8 +1,8 @@
 import numpy as np
 
-from mavka.graph import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
-from mavka.log import AppendLog
-from mavka.record import FLAG_DELETED
+from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
+from mavka.storage.log import AppendLog
+from mavka.core.record import FLAG_DELETED
 
 
 class _UnionFind:

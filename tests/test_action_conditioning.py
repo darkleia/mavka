@@ -3,10 +3,10 @@ import pytest
 
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
-from mavka.baseline import split_episodes
-from mavka.fusion import ConcatFusionPredictor
+from mavka.eval.baseline import split_episodes
+from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.store import VectorStore
+from mavka.index.flat import VectorStore
 
 
 def test_action_conditioned_retrieval_distinguishes_matching_action():

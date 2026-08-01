@@ -1,4 +1,4 @@
-from mavka.graph import EDGE_ANALOGOUS, EDGE_TEMPORAL
+from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL
 
 _ALL_EDGE_TYPES = (EDGE_TEMPORAL, EDGE_ANALOGOUS)
 
@@ -31,7 +31,7 @@ def expand(
     depth = 0 is the off switch: returns exactly the seeds, unchanged.
     depth = 1 adds direct neighbors; depth = 2 adds neighbors-of-neighbors;
     and so on. edge_types restricts which edge kinds to follow (an
-    iterable of edge-type codes from mavka.graph, e.g. [EDGE_TEMPORAL]);
+    iterable of edge-type codes from mavka.graph.adjacency, e.g. [EDGE_TEMPORAL]);
     None (the default) follows both temporal and analogous edges.
 
     max_nodes is a hard cap on the total number of nodes returned,

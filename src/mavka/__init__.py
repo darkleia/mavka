@@ -1,5 +1,5 @@
 from mavka.config import MavkaConfig
-from mavka.store import VectorStore
+from mavka.index.flat import VectorStore
 
 __version__ = "0.0.1"
 

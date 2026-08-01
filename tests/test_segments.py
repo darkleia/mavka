@@ -3,8 +3,8 @@ import json
 import numpy as np
 import pytest
 
-from mavka.record import Experience, serialize_many
-from mavka.segments import SegmentStore
+from mavka.core.record import Experience, serialize_many
+from mavka.storage.segments import SegmentStore
 
 
 def _make_experience(id_, dim=4, action_dim=None, episode_id=0, seq_no=None):

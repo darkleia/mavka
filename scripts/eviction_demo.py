@@ -1,8 +1,8 @@
 import numpy as np
 
-from mavka.eviction import EvictionPolicy
-from mavka.log import AppendLog
-from mavka.store import VectorStore
+from mavka.lifecycle.eviction import EvictionPolicy
+from mavka.storage.log import AppendLog
+from mavka.index.flat import VectorStore
 
 NOW_NS = 1_000_000_000_000
 

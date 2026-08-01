@@ -1,9 +1,9 @@
 import numpy as np
 
 from mavka.adapter import SyntheticWorldModel
-from mavka.eval import evaluate
+from mavka.eval.sweep import evaluate
 from mavka.pipeline import build_pipeline_from_adapter
-from mavka.store import VectorStore
+from mavka.index.flat import VectorStore
 
 
 def main() -> None:

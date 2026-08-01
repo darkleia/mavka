@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
-from mavka.baseline import split_episodes
-from mavka.eviction import EvictionPolicy
-from mavka.feedback import FeedbackBuffer, drain_feedback
-from mavka.log import AppendLog
+from mavka.eval.baseline import split_episodes
+from mavka.lifecycle.eviction import EvictionPolicy
+from mavka.lifecycle.feedback import FeedbackBuffer, drain_feedback
+from mavka.storage.log import AppendLog
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.store import VectorStore
-from mavka.trigger import SurpriseTrigger, evaluate_gated
+from mavka.index.flat import VectorStore
+from mavka.retrieval.trigger import SurpriseTrigger, evaluate_gated
 
 NOW_NS = 1_000_000_000_000
 SECOND_NS = 10**9

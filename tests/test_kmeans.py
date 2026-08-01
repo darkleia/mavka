@@ -2,7 +2,7 @@ import time
 
 import numpy as np
 
-from mavka.kmeans import assign, kmeans
+from mavka.index.kmeans import assign, kmeans
 
 
 def _make_blobs(centers, n_per_blob, std, seed):

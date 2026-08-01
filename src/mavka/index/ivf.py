@@ -3,8 +3,8 @@ from enum import Enum
 
 import numpy as np
 
-from mavka.kmeans import assign, kmeans
-from mavka.store import VectorStore, normalize
+from mavka.index.kmeans import assign, kmeans
+from mavka.index.flat import VectorStore, normalize
 
 
 class IVFState(str, Enum):

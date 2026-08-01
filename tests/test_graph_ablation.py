@@ -1,11 +1,11 @@
 import numpy as np
 
 from mavka.adapter import SyntheticWorldModel
-from mavka.experiment import CONDITION_NAMES, graph_helps, run_memory_experiment
-from mavka.graph import EDGE_TEMPORAL, AdjacencyStore
+from mavka.eval.experiment import CONDITION_NAMES, graph_helps, run_memory_experiment
+from mavka.graph.adjacency import EDGE_TEMPORAL, AdjacencyStore
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.scorer import FixedWeightScorer
-from mavka.store import VectorStore
+from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.index.flat import VectorStore
 
 
 def _rand(dim, seed):

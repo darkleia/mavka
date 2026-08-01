@@ -1,8 +1,8 @@
 import numpy as np
 
-from mavka.baseline import prediction_error
-from mavka.fusion import ConcatFusionPredictor, build_context
-from mavka.keying import make_keys_batch
+from mavka.eval.baseline import prediction_error
+from mavka.retrieval.fusion import ConcatFusionPredictor, build_context
+from mavka.retrieval.keying import make_keys_batch
 
 
 class SurpriseTrigger:

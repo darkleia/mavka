@@ -1,13 +1,13 @@
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
-from mavka.baseline import evaluate_no_memory, split_episodes
-from mavka.edges import EdgeBuilder
-from mavka.expand import expand
-from mavka.fusion import ConcatFusionPredictor
-from mavka.graph import AdjacencyStore
+from mavka.eval.baseline import evaluate_no_memory, split_episodes
+from mavka.graph.builder import EdgeBuilder
+from mavka.graph.expand import expand
+from mavka.retrieval.fusion import ConcatFusionPredictor
+from mavka.graph.adjacency import AdjacencyStore
 from mavka.pipeline import Pipeline
-from mavka.scorer import FixedWeightScorer
-from mavka.store import VectorStore
+from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.index.flat import VectorStore
 
 
 def main() -> None:

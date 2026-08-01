@@ -1,8 +1,8 @@
 import numpy as np
 
-from mavka.eval import evaluate
-from mavka.ivf import IVFIndex
-from mavka.store import VectorStore
+from mavka.eval.sweep import evaluate
+from mavka.index.ivf import IVFIndex
+from mavka.index.flat import VectorStore
 
 
 def _random_vectors(n, dim, seed, center=None):

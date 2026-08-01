@@ -1,5 +1,5 @@
 from mavka.adapter import SyntheticWorldModel
-from mavka.experiment import format_experiment_report, memory_helps, run_memory_experiment
+from mavka.eval.experiment import format_experiment_report, memory_helps, run_memory_experiment
 
 
 def main() -> None:

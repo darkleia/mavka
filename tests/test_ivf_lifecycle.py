@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mavka.ivf import IVFIndex, IVFState
+from mavka.index.ivf import IVFIndex, IVFState
 
 
 def _random_vectors(n, dim, seed):

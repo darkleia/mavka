@@ -3,8 +3,8 @@ import threading
 import numpy as np
 import pytest
 
-from mavka.log import AppendLog
-from mavka.record import FLAG_DELETED
+from mavka.storage.log import AppendLog
+from mavka.core.record import FLAG_DELETED
 
 
 def _z(dim, seed=0):

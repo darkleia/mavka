@@ -3,11 +3,11 @@ import pytest
 
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
-from mavka.baseline import evaluate_no_memory, split_episodes
-from mavka.fusion import ConcatFusionPredictor
+from mavka.eval.baseline import evaluate_no_memory, split_episodes
+from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.store import VectorStore
-from mavka.trigger import SurpriseTrigger, evaluate_gated
+from mavka.index.flat import VectorStore
+from mavka.retrieval.trigger import SurpriseTrigger, evaluate_gated
 
 
 def test_flat_errors_never_trigger_after_warmup():

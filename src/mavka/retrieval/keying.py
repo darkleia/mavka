@@ -1,6 +1,6 @@
 import numpy as np
 
-from mavka.store import normalize
+from mavka.index.flat import normalize
 
 
 def make_key(z, action, scale: float, action_dim: int | None) -> np.ndarray:

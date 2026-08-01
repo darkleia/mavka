@@ -1,6 +1,6 @@
 import numpy as np
 
-from mavka.tiering import TieredStore
+from mavka.storage.tiered import TieredStore
 
 NOW_NS = 1_000_000_000_000
 

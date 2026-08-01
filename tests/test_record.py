@@ -3,7 +3,7 @@ import struct
 import numpy as np
 import pytest
 
-from mavka.record import (
+from mavka.core.record import (
     FLAG_DELETED,
     FLAG_PINNED,
     Experience,

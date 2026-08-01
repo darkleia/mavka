@@ -5,7 +5,7 @@ import struct
 from collections.abc import Iterator
 from pathlib import Path
 
-from mavka.record import (
+from mavka.core.record import (
     Experience,
     RecordLayout,
     deserialize,

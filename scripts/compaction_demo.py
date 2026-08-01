@@ -1,8 +1,8 @@
 import numpy as np
 
-from mavka.compaction import compact
-from mavka.log import AppendLog
-from mavka.store import VectorStore
+from mavka.lifecycle.compaction import compact
+from mavka.storage.log import AppendLog
+from mavka.index.flat import VectorStore
 
 
 def _rand(dim, seed):

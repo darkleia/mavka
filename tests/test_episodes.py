@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mavka.log import AppendLog
+from mavka.storage.log import AppendLog
 
 
 def _z(seed, dim=4):

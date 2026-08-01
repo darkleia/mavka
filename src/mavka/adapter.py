@@ -2,7 +2,7 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from mavka.store import normalize
+from mavka.index.flat import normalize
 
 
 @runtime_checkable

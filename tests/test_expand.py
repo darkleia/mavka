@@ -1,11 +1,11 @@
 import numpy as np
 
-from mavka.edges import EdgeBuilder
-from mavka.expand import decay_for_depth, expand
-from mavka.graph import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
+from mavka.graph.builder import EdgeBuilder
+from mavka.graph.expand import decay_for_depth, expand
+from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
 from mavka.pipeline import ActionConditionedPipeline, Pipeline
-from mavka.scorer import FixedWeightScorer
-from mavka.store import VectorStore
+from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.index.flat import VectorStore
 
 
 def _rand(dim, seed):

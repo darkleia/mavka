@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from mavka.keying import make_key, make_keys_batch
+from mavka.retrieval.keying import make_key, make_keys_batch
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.store import VectorStore, normalize
+from mavka.index.flat import VectorStore, normalize
 
 
 def test_make_key_shape_dtype_unit_norm():

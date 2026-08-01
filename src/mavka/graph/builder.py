@@ -1,4 +1,4 @@
-from mavka.graph import EDGE_ANALOGOUS, EDGE_TEMPORAL
+from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL
 
 
 class EdgeBuilder:

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from mavka import VectorStore
-from mavka.store import normalize
+from mavka.index.flat import normalize
 
 
 def test_add_stores_unit_norm_vector():

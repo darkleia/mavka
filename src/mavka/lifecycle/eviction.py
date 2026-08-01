@@ -3,8 +3,8 @@ import warnings
 
 import numpy as np
 
-from mavka.compaction import compact
-from mavka.record import FLAG_DELETED, FLAG_PINNED
+from mavka.lifecycle.compaction import compact
+from mavka.core.record import FLAG_DELETED, FLAG_PINNED
 
 
 def _min_max_normalize(values: np.ndarray) -> np.ndarray:

@@ -1,6 +1,6 @@
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
-from mavka.baseline import split_episodes
-from mavka.experiment import CONDITION_NAMES, memory_helps, run_memory_experiment
+from mavka.eval.baseline import split_episodes
+from mavka.eval.experiment import CONDITION_NAMES, memory_helps, run_memory_experiment
 
 
 def test_experiment_runs_end_to_end_with_expected_structure():

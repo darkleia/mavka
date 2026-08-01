@@ -1,9 +1,9 @@
 import numpy as np
 
-from mavka.edges import EdgeBuilder
-from mavka.graph import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
+from mavka.graph.builder import EdgeBuilder
+from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
 from mavka.pipeline import Pipeline
-from mavka.store import VectorStore, normalize
+from mavka.index.flat import VectorStore, normalize
 
 
 def _rand(dim, seed):

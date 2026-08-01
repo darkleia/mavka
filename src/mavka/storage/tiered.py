@@ -3,11 +3,11 @@ import warnings
 
 import numpy as np
 
-from mavka.eviction import EvictionPolicy
-from mavka.ivf import IVFIndex
-from mavka.log import AppendLog
-from mavka.record import FLAG_PINNED
-from mavka.store import VectorStore, normalize
+from mavka.lifecycle.eviction import EvictionPolicy
+from mavka.index.ivf import IVFIndex
+from mavka.storage.log import AppendLog
+from mavka.core.record import FLAG_PINNED
+from mavka.index.flat import VectorStore, normalize
 
 
 class TieredStore:

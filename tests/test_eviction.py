@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from mavka.eviction import EvictionPolicy
-from mavka.graph import EDGE_TEMPORAL, AdjacencyStore
-from mavka.log import AppendLog
-from mavka.store import VectorStore
+from mavka.lifecycle.eviction import EvictionPolicy
+from mavka.graph.adjacency import EDGE_TEMPORAL, AdjacencyStore
+from mavka.storage.log import AppendLog
+from mavka.index.flat import VectorStore
 
 NOW_NS = 1_000_000_000_000
 SECOND_NS = 10**9

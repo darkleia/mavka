@@ -1,6 +1,6 @@
 import pytest
 
-from mavka.graph import AdjacencyStore
+from mavka.graph.adjacency import AdjacencyStore
 
 
 def _make_nodes(store, n):

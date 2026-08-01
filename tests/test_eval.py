@@ -1,7 +1,7 @@
 import numpy as np
 
 from mavka import VectorStore
-from mavka.eval import evaluate, recall_at_k
+from mavka.eval.sweep import evaluate, recall_at_k
 
 
 def test_recall_at_k_perfect_overlap():

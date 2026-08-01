@@ -1,13 +1,13 @@
 import numpy as np
 
 from mavka.adapter import generate_trajectory
-from mavka.expand import decay_for_depth, expand
-from mavka.ivf import IVFIndex
-from mavka.keying import make_key
-from mavka.log import AppendLog
-from mavka.record import Experience
-from mavka.segments import SegmentStore
-from mavka.store import normalize
+from mavka.graph.expand import decay_for_depth, expand
+from mavka.index.ivf import IVFIndex
+from mavka.retrieval.keying import make_key
+from mavka.storage.log import AppendLog
+from mavka.core.record import Experience
+from mavka.storage.segments import SegmentStore
+from mavka.index.flat import normalize
 
 
 class Pipeline:

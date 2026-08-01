@@ -2,10 +2,10 @@ import numpy as np
 import pytest
 
 from mavka.adapter import SyntheticWorldModel
-from mavka.eval import evaluate
+from mavka.eval.sweep import evaluate
 from mavka.pipeline import Pipeline, build_pipeline_from_adapter
-from mavka.segments import SegmentStore
-from mavka.store import VectorStore, normalize
+from mavka.storage.segments import SegmentStore
+from mavka.index.flat import VectorStore, normalize
 
 
 def test_end_to_end_write_read():

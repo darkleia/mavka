@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 from mavka.adapter import SyntheticWorldModel, generate_trajectory, populate_store
-from mavka.log import AppendLog
-from mavka.store import VectorStore, normalize
+from mavka.storage.log import AppendLog
+from mavka.index.flat import VectorStore, normalize
 
 
 def test_synthetic_model_produces_unit_vectors_of_right_shape_and_dtype():

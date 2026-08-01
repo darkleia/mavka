@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from mavka.record import FLAG_DELETED, FLAG_PINNED, Experience
+from mavka.core.record import FLAG_DELETED, FLAG_PINNED, Experience
 
 
 class AppendLog:

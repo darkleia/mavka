@@ -1,5 +1,5 @@
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
-from mavka.baseline import evaluate_no_memory, split_episodes
+from mavka.eval.baseline import evaluate_no_memory, split_episodes
 
 
 def main() -> None:

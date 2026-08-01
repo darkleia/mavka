@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from mavka.graph import EDGE_TEMPORAL, AdjacencyStore
-from mavka.record import FLAG_PINNED
-from mavka.store import VectorStore
-from mavka.tiering import TieredStore
+from mavka.graph.adjacency import EDGE_TEMPORAL, AdjacencyStore
+from mavka.core.record import FLAG_PINNED
+from mavka.index.flat import VectorStore
+from mavka.storage.tiered import TieredStore
 
 NOW_NS = 1_000_000_000_000
 SECOND_NS = 10**9

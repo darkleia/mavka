@@ -2,13 +2,13 @@ import numpy as np
 
 from mavka.action_conditioning import evaluate_with_retrieval
 from mavka.adapter import generate_trajectory
-from mavka.baseline import evaluate_no_memory, split_episodes
-from mavka.edges import EdgeBuilder
-from mavka.fusion import ConcatFusionPredictor
-from mavka.graph import AdjacencyStore
+from mavka.eval.baseline import evaluate_no_memory, split_episodes
+from mavka.graph.builder import EdgeBuilder
+from mavka.retrieval.fusion import ConcatFusionPredictor
+from mavka.graph.adjacency import AdjacencyStore
 from mavka.pipeline import ActionConditionedPipeline, Pipeline
-from mavka.scorer import FixedWeightScorer
-from mavka.store import VectorStore
+from mavka.retrieval.scorer import FixedWeightScorer
+from mavka.index.flat import VectorStore
 
 CONDITION_NAMES = [
     "no_memory",
