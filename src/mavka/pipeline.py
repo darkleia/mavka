@@ -1,6 +1,7 @@
 import numpy as np
 
 from mavka.adapter import generate_trajectory
+from mavka.expand import decay_for_depth, expand
 from mavka.ivf import IVFIndex
 from mavka.keying import make_key
 from mavka.log import AppendLog
@@ -78,6 +79,49 @@ class Pipeline:
         query_z = normalize(np.asarray(query_z, dtype=np.float32))
         return self._index.search(query_z, k)
 
+    def recall_scored(
+        self,
+        query_z,
+        action,
+        k: int,
+        scorer,
+        fetch_factor: int = 5,
+        graph=None,
+        expand_depth: int = 0,
+        max_nodes: int = 50,
+        edge_types=None,
+    ) -> list[tuple[int, float]]:
+        """Two-stage recall on the plain z-only index: over-fetch
+        k * fetch_factor candidates, optionally expand them over graph
+        (same semantics as ActionConditionedPipeline.recall_scored), then
+        re-rank with scorer.score() and keep the top k.
+
+        Parameter order matches ActionConditionedPipeline.recall_scored
+        (query_z, action, k, scorer, ...) rather than this class's own
+        recall(query_z, k, action=...), so callers like
+        evaluate_with_retrieval work unchanged against either pipeline.
+        """
+        candidates = self.recall(query_z, k * fetch_factor, action=action)
+
+        if graph is not None and expand_depth > 0:
+            seed_scores = dict(candidates)
+            expanded = expand(
+                list(seed_scores.keys()),
+                graph,
+                depth=expand_depth,
+                max_nodes=max_nodes,
+                edge_types=edge_types,
+            )
+            candidates = [
+                (node_id, seed_scores[node_id])
+                if prov["is_seed"]
+                else (node_id, prov["weight"] * decay_for_depth(prov["depth"]))
+                for node_id, prov in expanded
+            ]
+
+        ranked = scorer.score(candidates, action)
+        return ranked[:k]
+
     def get(self, id: int) -> Experience:
         return self._log.get(id)
 
@@ -138,13 +182,52 @@ class ActionConditionedPipeline:
         return self._index.search(query_key, k)
 
     def recall_scored(
-        self, query_z, action, k: int, scorer, fetch_factor: int = 5
+        self,
+        query_z,
+        action,
+        k: int,
+        scorer,
+        fetch_factor: int = 5,
+        graph=None,
+        expand_depth: int = 0,
+        max_nodes: int = 50,
+        edge_types=None,
     ) -> list[tuple[int, float]]:
         """Two-stage recall: over-fetch k * fetch_factor candidates by raw
         key similarity (the plain recall() above), re-rank them with
         scorer.score(), and keep the top k.
+
+        If graph and expand_depth > 0 are given, an expansion stage runs
+        between retrieval and scoring: the over-fetched candidates become
+        seeds, expand() walks graph outward from them up to expand_depth
+        hops (capped at max_nodes total, restricted to edge_types if
+        given), and the resulting node set -- seeds plus whatever was
+        reached -- becomes the candidate set the scorer sees instead.
+        Seeds keep their original retrieval score; a non-seed node's score
+        is the weight of the edge that first reached it, multiplied by
+        decay_for_depth(its depth) -- a depth-1 node scores at half
+        strength, depth-2 at a quarter, and so on. expand_depth=0 (the
+        default) reproduces the exact pre-expansion behavior: graph is
+        simply never consulted.
         """
         candidates = self.recall(query_z, action, k * fetch_factor)
+
+        if graph is not None and expand_depth > 0:
+            seed_scores = dict(candidates)
+            expanded = expand(
+                list(seed_scores.keys()),
+                graph,
+                depth=expand_depth,
+                max_nodes=max_nodes,
+                edge_types=edge_types,
+            )
+            candidates = [
+                (node_id, seed_scores[node_id])
+                if prov["is_seed"]
+                else (node_id, prov["weight"] * decay_for_depth(prov["depth"]))
+                for node_id, prov in expanded
+            ]
+
         ranked = scorer.score(candidates, action)
         return ranked[:k]
 

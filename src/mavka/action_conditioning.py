@@ -14,6 +14,10 @@ def evaluate_with_retrieval(
     scale: float,
     scorer=None,
     fetch_factor: int = 5,
+    graph=None,
+    expand_depth: int = 0,
+    max_nodes: int = 50,
+    edge_types=None,
 ) -> dict:
     """Fill pipeline's memory from memory_episodes (keyed at the given
     scale), then for each held-out eval step, retrieve the k nearest past
@@ -25,7 +29,10 @@ def evaluate_with_retrieval(
 
     If scorer is given, candidates are fetched via the pipeline's two-stage
     recall_scored (over-fetch k * fetch_factor by raw similarity, then
-    re-rank with scorer) instead of the plain recall.
+    re-rank with scorer) instead of the plain recall. If graph and
+    expand_depth > 0 are also given, recall_scored's graph-expansion stage
+    runs too (see Pipeline.recall_scored); expand_depth=0 (the default)
+    never touches the graph, reproducing prior behavior exactly.
     """
     pipeline.scale = scale
 
@@ -54,7 +61,15 @@ def evaluate_with_retrieval(
         for step in episode:
             if scorer is not None:
                 results = pipeline.recall_scored(
-                    step["z"], step["action"], k, scorer, fetch_factor=fetch_factor
+                    step["z"],
+                    step["action"],
+                    k,
+                    scorer,
+                    fetch_factor=fetch_factor,
+                    graph=graph,
+                    expand_depth=expand_depth,
+                    max_nodes=max_nodes,
+                    edge_types=edge_types,
                 )
             else:
                 results = pipeline.recall(step["z"], step["action"], k)

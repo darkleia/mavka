@@ -45,7 +45,7 @@ class EdgeBuilder:
                 predecessor.id, record_id, weight=self.temporal_weight, edge_type=EDGE_TEMPORAL
             )
 
-        if index.count <= 1:
+        if index.count <= 1 or self.n_analogous <= 0:
             return
 
         fetch_k = min(index.count, self.n_analogous * self.fetch_factor)
