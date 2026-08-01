@@ -7,12 +7,13 @@ from mavka.lifecycle.eviction import EvictionPolicy
 from mavka.index.ivf import IVFIndex
 from mavka.storage.log import AppendLog
 from mavka.core.record import FLAG_PINNED
-from mavka.index.flat import VectorStore, normalize
+from mavka.index.flat import FlatIndex
+from mavka.core.distance import normalize
 
 
 class TieredStore:
     """Two-tier storage: a small, bounded hot tier with exact search
-    (VectorStore) and a larger cold tier with approximate search
+    (FlatIndex) and a larger cold tier with approximate search
     (IVFIndex). Every record lives in exactly one tier at a time; a
     background pass (migrate_hot_to_cold) moves the least valuable hot
     records to cold once the hot tier exceeds hot_capacity, using the
@@ -28,7 +29,7 @@ class TieredStore:
     and anything that references a record by id (a graph, episode
     navigation), needs no remapping at all, because the id never changes.
 
-    Internally, each tier's index (VectorStore/IVFIndex) hands back its
+    Internally, each tier's index (FlatIndex/IVFIndex) hands back its
     own internal, index-local integer when a vector is added -- unrelated
     to the log id. This store keeps a position -> log_id map per tier to
     translate search hits back to log ids (unlike Pipeline, which gets
@@ -54,7 +55,7 @@ class TieredStore:
 
         self._log = AppendLog(dim=dim, action_dim=action_dim)
 
-        self._hot_index = VectorStore(dim=dim)
+        self._hot_index = FlatIndex(dim=dim)
         self._cold_index = IVFIndex(dim=dim, n_lists=cold_n_lists, seed=cold_seed)
 
         self._log_id_of_hot_pos: dict[int, int] = {}
@@ -110,9 +111,9 @@ class TieredStore:
         EvictionPolicy.evict_to_capacity does for its own over-pinned
         case.
 
-        Builds the new hot tier as a fresh VectorStore snapshot (excluding
+        Builds the new hot tier as a fresh FlatIndex snapshot (excluding
         the migrated ids) and swaps it in atomically at the end --
-        VectorStore has no removal primitive, so shrinking hot means
+        FlatIndex has no removal primitive, so shrinking hot means
         rebuilding it, on the same snapshot/atomic-swap discipline
         compact() and evict_to_capacity() use. The cold tier only ever
         grows (append, no rebuild needed) since IVFIndex requires no
@@ -160,7 +161,7 @@ class TieredStore:
             migrated_set = set(migrated_ids)
             remaining_hot_ids = [id_ for id_ in hot_ids if id_ not in migrated_set]
 
-            new_hot_index = VectorStore(dim=self.dim)
+            new_hot_index = FlatIndex(dim=self.dim)
             new_log_id_of_hot_pos: dict[int, int] = {}
             for id_ in remaining_hot_ids:
                 pos = new_hot_index.add(self._log.get(id_).z)
@@ -211,7 +212,7 @@ class TieredStore:
 
     def recall(self, query_z, k: int) -> list[tuple[int, float]]:
         """Search both tiers and merge into one top-k by score. Both
-        VectorStore and IVFIndex score with normalized-vector dot product
+        FlatIndex and IVFIndex score with normalized-vector dot product
         (cosine similarity), so scores from the two tiers are directly
         comparable without any extra normalization step -- gather
         candidates from each, then take the merged top-k, same pattern as

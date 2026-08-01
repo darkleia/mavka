@@ -3,7 +3,8 @@ import numpy as np
 from mavka.graph.builder import EdgeBuilder
 from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
 from mavka.pipeline import Pipeline
-from mavka.index.flat import VectorStore, normalize
+from mavka.index.flat import FlatIndex
+from mavka.core.distance import normalize
 
 
 def _rand(dim, seed):
@@ -15,7 +16,7 @@ def _build_pipeline(dim, n_analogous=3, similarity_threshold=0.5, temporal_weigh
     builder = EdgeBuilder(
         n_analogous=n_analogous, similarity_threshold=similarity_threshold, temporal_weight=temporal_weight
     )
-    pipeline = Pipeline(dim=dim, index=VectorStore(dim=dim), graph=graph, edge_builder=builder)
+    pipeline = Pipeline(dim=dim, index=FlatIndex(dim=dim), graph=graph, edge_builder=builder)
     return pipeline, graph
 
 

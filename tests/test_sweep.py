@@ -2,7 +2,7 @@ import numpy as np
 
 from mavka.eval.sweep import format_sweep_table, sweep_nprobe
 from mavka.index.ivf import IVFIndex
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _random_vectors(n, dim, seed):
@@ -13,7 +13,7 @@ def _random_vectors(n, dim, seed):
 def _build_index_and_ground_truth(n=2000, dim=16, n_lists=20, seed=0):
     vectors = _random_vectors(n, dim, seed=seed)
 
-    ground_truth = VectorStore(dim=dim)
+    ground_truth = FlatIndex(dim=dim)
     ground_truth.add_batch(vectors)
 
     index = IVFIndex(dim=dim, n_lists=n_lists)

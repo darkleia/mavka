@@ -2,7 +2,7 @@ import numpy as np
 
 from mavka.lifecycle.compaction import compact
 from mavka.storage.log import AppendLog
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _rand(dim, seed):
@@ -37,14 +37,14 @@ def main() -> None:
         log.tombstone(id_)
 
     all_ids = distinct_ids + duplicate_ids + tombstoned_ids
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
     for id_ in all_ids:
         index.add(log.get(id_).z)
 
     print(f"before compaction: {log.count} records, index count {index.count}")
 
     result = compact(
-        log, index, index_factory=lambda: VectorStore(dim=dim), merge=True, similarity_threshold=0.999
+        log, index, index_factory=lambda: FlatIndex(dim=dim), merge=True, similarity_threshold=0.999
     )
     stats = result["stats"]
 

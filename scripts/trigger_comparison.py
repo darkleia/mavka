@@ -3,7 +3,7 @@ from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
 from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 from mavka.retrieval.trigger import SurpriseTrigger, evaluate_gated
 
 
@@ -31,7 +31,7 @@ def main() -> None:
 
     def new_pipeline():
         return ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
+            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
         )
 
     rows = []

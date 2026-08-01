@@ -2,7 +2,7 @@ import numpy as np
 
 from mavka.eval.sweep import evaluate
 from mavka.index.ivf import IVFIndex
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _random_vectors(n, dim, seed, center=None):
@@ -99,7 +99,7 @@ def test_recall_degrades_under_drift():
     matched_ivf.train(train_vectors)
     matched_ivf.add_batch(train_vectors)
     matched_ivf.nprobe = nprobe
-    matched_ground_truth = VectorStore(dim=dim)
+    matched_ground_truth = FlatIndex(dim=dim)
     matched_ground_truth.add_batch(train_vectors)
     matched_queries = _random_vectors(50, dim, seed=7)
     matched_result = evaluate(matched_ivf, matched_ground_truth, matched_queries, k=k)
@@ -109,7 +109,7 @@ def test_recall_degrades_under_drift():
     drifted_vectors = _make_multiblob(2000, dim, n_blobs=5, offset_scale=6.0, seed=8)
     drifted_ivf.add_batch(drifted_vectors)
     drifted_ivf.nprobe = nprobe
-    drifted_ground_truth = VectorStore(dim=dim)
+    drifted_ground_truth = FlatIndex(dim=dim)
     drifted_ground_truth.add_batch(drifted_vectors)
     drifted_queries = _make_multiblob(50, dim, n_blobs=5, offset_scale=6.0, seed=9)
     drifted_result = evaluate(drifted_ivf, drifted_ground_truth, drifted_queries, k=k)

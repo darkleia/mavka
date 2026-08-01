@@ -127,7 +127,7 @@ def compact(
        inherit their relative position among that episode's survivors.
     5. Rebuild the index (via index_factory, a zero-arg callable
        returning a fresh, appropriately configured index -- e.g. an
-       untrained IVFIndex or a plain VectorStore) over the new log, id
+       untrained IVFIndex or a plain FlatIndex) over the new log, id
        for id, training first if the index needs it.
     6. Rebuild graph, if given: every edge from every surviving-or-merged
        old id is re-added with both endpoints passed through id_map,

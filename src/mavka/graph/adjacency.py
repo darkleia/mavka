@@ -17,7 +17,7 @@ class AdjacencyStore:
     log assigns ids.
 
     Backed by three contiguous [capacity, degree] arrays, preallocated and
-    grown by doubling (the same pattern as VectorStore): _neighbors
+    grown by doubling (the same pattern as FlatIndex): _neighbors
     (int64, sentinel -1 means "empty slot"), _weights (float32, one weight
     per slot, 0.0 for empty slots), and _edge_types (int8, an arbitrary
     caller-defined code per slot, e.g. EDGE_TEMPORAL/EDGE_ANALOGOUS,

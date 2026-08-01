@@ -5,7 +5,8 @@ from mavka.adapter import SyntheticWorldModel
 from mavka.eval.sweep import evaluate
 from mavka.pipeline import Pipeline, build_pipeline_from_adapter
 from mavka.storage.segments import SegmentStore
-from mavka.index.flat import VectorStore, normalize
+from mavka.index.flat import FlatIndex
+from mavka.core.distance import normalize
 
 
 def test_end_to_end_write_read():
@@ -62,7 +63,7 @@ def test_persistence_round_trip(tmp_path):
     store_path = tmp_path / "store"
 
     pipeline = Pipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim), store_path=str(store_path)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim), store_path=str(store_path)
     )
 
     rng = np.random.default_rng(4)
@@ -104,7 +105,7 @@ def test_real_data_recall_quality():
         reference_adapter,
         n_episodes=n_episodes,
         episode_length=episode_length,
-        index=VectorStore(dim=dim),
+        index=FlatIndex(dim=dim),
     )
 
     pipeline._index.nprobe = nprobe
@@ -118,7 +119,7 @@ def test_real_data_recall_quality():
 def test_swapability_with_brute_force_index():
     dim = 8
     action_dim = 2
-    pipeline = Pipeline(dim=dim, action_dim=action_dim, index=VectorStore(dim=dim))
+    pipeline = Pipeline(dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim))
 
     rng = np.random.default_rng(5)
     ids = []

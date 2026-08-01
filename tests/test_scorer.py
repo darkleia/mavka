@@ -7,7 +7,7 @@ from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.storage.log import AppendLog
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.retrieval.scorer import FixedWeightScorer
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _rand(dim, seed):
@@ -110,7 +110,7 @@ def test_recall_scored_returns_k_results():
     dim = 8
     action_dim = 2
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     for i in range(20):
         pipeline.observe(z=_rand(dim, i), action=_rand(action_dim, i + 100), z_next=None)
@@ -137,7 +137,7 @@ def test_recall_scored_end_to_end_with_evaluate_with_retrieval():
 
     eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=30)
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     scorer = FixedWeightScorer(pipeline._log)
     predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)

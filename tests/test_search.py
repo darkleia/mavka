@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
 
-from mavka import VectorStore
+from mavka import FlatIndex
 
 
 def test_closest_result_is_itself():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     store.add([1.0, 0.0, 0.0])
     store.add([0.0, 1.0, 0.0])
     store.add([0.0, 0.0, 1.0])
@@ -15,7 +15,7 @@ def test_closest_result_is_itself():
 
 
 def test_results_sorted_descending():
-    store = VectorStore(dim=2)
+    store = FlatIndex(dim=2)
     store.add([1.0, 0.0])
     store.add([0.9, 0.1])
     store.add([0.0, 1.0])
@@ -29,7 +29,7 @@ def test_matches_naive_reference():
     rng = np.random.default_rng(0)
     dim = 16
     n = 200
-    store = VectorStore(dim=dim)
+    store = FlatIndex(dim=dim)
     vectors = rng.random((n, dim), dtype=np.float64).astype(np.float32)
     store.add_batch(vectors)
     query = rng.random(dim, dtype=np.float64).astype(np.float32)
@@ -58,7 +58,7 @@ def test_matches_naive_reference():
 
 
 def test_k_greater_than_count_returns_all_ranked():
-    store = VectorStore(dim=2)
+    store = FlatIndex(dim=2)
     store.add([1.0, 0.0])
     store.add([0.9, 0.1])
     store.add([0.0, 1.0])
@@ -68,12 +68,12 @@ def test_k_greater_than_count_returns_all_ranked():
 
 
 def test_empty_store_returns_empty_list():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     assert store.search([1.0, 2.0, 3.0], k=5) == []
 
 
 def test_wrong_length_query_raises():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     store.add([1.0, 2.0, 3.0])
     with pytest.raises(ValueError):
         store.search([1.0, 2.0], k=1)
@@ -81,7 +81,7 @@ def test_wrong_length_query_raises():
 
 @pytest.mark.parametrize("k", [0, -1])
 def test_non_positive_k_raises(k):
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     store.add([1.0, 2.0, 3.0])
     with pytest.raises(ValueError):
         store.search([1.0, 2.0, 3.0], k=k)
@@ -91,7 +91,7 @@ def test_large_random_matches_full_argsort_reference():
     rng = np.random.default_rng(42)
     dim = 32
     n = 5000
-    store = VectorStore(dim=dim)
+    store = FlatIndex(dim=dim)
     vectors = rng.standard_normal((n, dim)).astype(np.float32)
     store.add_batch(vectors)
     query = rng.standard_normal(dim).astype(np.float32)

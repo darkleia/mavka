@@ -3,7 +3,7 @@ import pytest
 
 from mavka.graph.adjacency import EDGE_TEMPORAL, AdjacencyStore
 from mavka.core.record import FLAG_PINNED
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 from mavka.storage.tiered import TieredStore
 
 NOW_NS = 1_000_000_000_000
@@ -119,7 +119,7 @@ def test_two_tier_search_matches_exact_search():
     # quality (that is IVFIndex's own concern, tested elsewhere).
     store._cold_index.nprobe = store._cold_index._n_lists_actual
 
-    reference = VectorStore(dim=dim)
+    reference = FlatIndex(dim=dim)
     for v in vectors:
         reference.add(v)
 

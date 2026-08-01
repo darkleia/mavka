@@ -3,7 +3,8 @@ import pytest
 
 from mavka.retrieval.keying import make_key, make_keys_batch
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import VectorStore, normalize
+from mavka.index.flat import FlatIndex
+from mavka.core.distance import normalize
 
 
 def test_make_key_shape_dtype_unit_norm():
@@ -64,9 +65,9 @@ def test_scale_zero_retrieval_matches_appearance_only_search():
     actions = rng.standard_normal((20, action_dim)).astype(np.float32)
 
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=0.0
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=0.0
     )
-    plain_store = VectorStore(dim=dim)
+    plain_store = FlatIndex(dim=dim)
 
     for i in range(20):
         pipeline.observe(z=zs[i], action=actions[i], z_next=None, episode_id=0)

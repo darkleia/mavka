@@ -2,7 +2,7 @@ import numpy as np
 
 from mavka.eval.sweep import format_sweep_table, sweep_nprobe
 from mavka.index.ivf import IVFIndex
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def main() -> None:
@@ -17,7 +17,7 @@ def main() -> None:
     vectors = rng.standard_normal((n, dim)).astype(np.float32)
     queries = rng.standard_normal((n_queries, dim)).astype(np.float32)
 
-    ground_truth = VectorStore(dim=dim)
+    ground_truth = FlatIndex(dim=dim)
     ground_truth.add_batch(vectors)
 
     index = IVFIndex(dim=dim, n_lists=n_lists)

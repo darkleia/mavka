@@ -2,7 +2,7 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from mavka.index.flat import normalize
+from mavka.core.distance import normalize
 
 
 @runtime_checkable
@@ -121,7 +121,7 @@ def generate_trajectory(adapter, length: int, episode_id: int = 0) -> list[dict]
 
 def populate_store(adapter, log_or_index, n_episodes: int, episode_length: int) -> list[int]:
     """Feed n_episodes generated trajectories into an AppendLog or a plain
-    vector index (VectorStore/IVFIndex), assigning episode_id/seq_no along
+    vector index (FlatIndex/IVFIndex), assigning episode_id/seq_no along
     the way. An AppendLog (has .append) keeps the full record (z, action,
     pred_err, episode_id); a plain index (has .add) only has room for the
     latent itself, so only z is stored.

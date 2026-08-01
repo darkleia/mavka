@@ -1,6 +1,6 @@
 import numpy as np
 
-from mavka import VectorStore
+from mavka import FlatIndex
 from mavka.eval.sweep import evaluate, recall_at_k
 
 
@@ -21,7 +21,7 @@ def test_recall_at_k_empty_true_ids():
 
 
 def _build_store(rng, dim=16, n=200):
-    store = VectorStore(dim=dim)
+    store = FlatIndex(dim=dim)
     vectors = rng.standard_normal((n, dim)).astype(np.float32)
     store.add_batch(vectors)
     return store

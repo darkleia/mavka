@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mavka import VectorStore
+from mavka import FlatIndex
 
 GOLDEN_PATH = Path(__file__).parent / "golden" / "search_results.json"
 DIM = 64
@@ -16,7 +16,7 @@ K = 10
 
 def _build_corpus_and_queries():
     rng = np.random.default_rng(42)
-    store = VectorStore(dim=DIM)
+    store = FlatIndex(dim=DIM)
     vectors = rng.standard_normal((CORPUS_SIZE, DIM)).astype(np.float32)
     store.add_batch(vectors)
     queries = rng.standard_normal((NUM_QUERIES, DIM)).astype(np.float32)

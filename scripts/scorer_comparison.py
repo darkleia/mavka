@@ -4,7 +4,7 @@ from mavka.eval.baseline import evaluate_no_memory, split_episodes
 from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.retrieval.scorer import FixedWeightScorer
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def main() -> None:
@@ -32,7 +32,7 @@ def main() -> None:
 
     def new_pipeline():
         return ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
+            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
         )
 
     rows = []

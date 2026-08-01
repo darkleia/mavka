@@ -5,7 +5,7 @@ from mavka.graph.expand import decay_for_depth, expand
 from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
 from mavka.pipeline import ActionConditionedPipeline, Pipeline
 from mavka.retrieval.scorer import FixedWeightScorer
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _rand(dim, seed):
@@ -137,7 +137,7 @@ def test_off_switch_end_to_end_matches_no_expansion():
     action_dim = 2
     graph = AdjacencyStore(degree=4)
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     # ActionConditionedPipeline has no graph wiring in observe(); build the
     # graph independently to test recall_scored's own depth=0 off-switch.
@@ -167,7 +167,7 @@ def test_scoring_decay_ranks_seed_above_equal_similarity_depth_two_node():
     dim = 8
     graph = AdjacencyStore(degree=4)
     builder = EdgeBuilder(n_analogous=0, similarity_threshold=1.1, temporal_weight=1.0)
-    pipeline = Pipeline(dim=dim, index=VectorStore(dim=dim), graph=graph, edge_builder=builder)
+    pipeline = Pipeline(dim=dim, index=FlatIndex(dim=dim), graph=graph, edge_builder=builder)
 
     ids = [
         pipeline.observe(z=_rand(dim, i), action=None, z_next=None, episode_id=0) for i in range(3)

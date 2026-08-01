@@ -6,7 +6,7 @@ from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
 from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 from mavka.retrieval.trigger import SurpriseTrigger, evaluate_gated
 
 
@@ -84,7 +84,7 @@ def test_gated_evaluation_reports_rate_that_moves_with_lambda():
     def run_gated(lam):
         adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=60)
         pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
         )
         trigger = SurpriseTrigger(smoothing=0.1, lam=lam, warmup=5)
         return evaluate_gated(
@@ -115,7 +115,7 @@ def test_low_lambda_matches_always_retrieve_exactly():
 
     gated_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=61)
     gated_pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     trigger = SurpriseTrigger(smoothing=0.1, lam=-1000.0, warmup=0)
     gated_result = evaluate_gated(
@@ -124,7 +124,7 @@ def test_low_lambda_matches_always_retrieve_exactly():
 
     always_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=61)
     always_pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     always_predictor = ConcatFusionPredictor(always_adapter, alpha=1.0)
     always_result = evaluate_with_retrieval(
@@ -151,7 +151,7 @@ def test_high_lambda_approximately_matches_never_retrieve():
 
     gated_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=62)
     gated_pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     # A tiny warmup (not 0) is needed even at extreme lambda: the EMA
     # variance is still genuinely 0 after only one sample, so the very next
@@ -182,7 +182,7 @@ def test_determinism():
 
         adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=63)
         pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
         )
         trigger = SurpriseTrigger(smoothing=0.1, lam=1.5, warmup=5)
         return evaluate_gated(memory_episodes, eval_episodes, pipeline, adapter, trigger, k=5, scale=1.0)

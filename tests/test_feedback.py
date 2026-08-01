@@ -9,7 +9,7 @@ from mavka.lifecycle.eviction import EvictionPolicy
 from mavka.lifecycle.feedback import FeedbackBuffer, drain_feedback
 from mavka.storage.log import AppendLog
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 from mavka.retrieval.trigger import SurpriseTrigger, evaluate_gated
 
 NOW_NS = 1_000_000_000_000
@@ -39,7 +39,7 @@ def _rescue_scenario():
     ]
     all_ids = [id_rescued, *other_ids]
 
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
     for id_ in all_ids:
         index.add(log.get(id_).z)
 
@@ -77,7 +77,7 @@ def test_utility_rescues_on_eviction_payoff():
 
     baseline_policy = EvictionPolicy()
     baseline_result = baseline_policy.evict_to_capacity(
-        log, index, index_factory=lambda: VectorStore(dim=dim), capacity=capacity, now_ns=NOW_NS
+        log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=capacity, now_ns=NOW_NS
     )
     # Sanity check: without feedback, the rescued record WOULD be evicted --
     # otherwise the "survives with feedback" assertion below would be
@@ -96,7 +96,7 @@ def test_utility_rescues_on_eviction_payoff():
     assert n_applied == 1
 
     fed_result = fed_policy.evict_to_capacity(
-        log2, index2, index_factory=lambda: VectorStore(dim=dim), capacity=capacity, now_ns=NOW_NS
+        log2, index2, index_factory=lambda: FlatIndex(dim=dim), capacity=capacity, now_ns=NOW_NS
     )
     assert id_rescued2 not in fed_result["evicted_ids"]
 
@@ -178,7 +178,7 @@ def test_gated_off_steps_record_nothing():
 
     adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=70)
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     # High lam -> most steps are gated off (never retrieve).
     trigger = SurpriseTrigger(smoothing=0.1, lam=1000.0, warmup=0)

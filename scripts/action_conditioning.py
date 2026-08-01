@@ -3,7 +3,7 @@ from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.eval.baseline import evaluate_no_memory, split_episodes
 from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def main() -> None:
@@ -36,7 +36,7 @@ def main() -> None:
     for scale in [0.0, 0.5, 1.0, 2.0]:
         eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=seed)
         pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
+            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
         )
         predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
         result = evaluate_with_retrieval(

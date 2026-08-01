@@ -3,7 +3,7 @@ import pytest
 
 from mavka.eval.sweep import evaluate
 from mavka.index.ivf import IVFIndex
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _random_vectors(n, dim, seed):
@@ -38,7 +38,7 @@ def test_nprobe_equals_n_lists_matches_brute_force():
     n_lists = 10
     vectors = _random_vectors(400, dim, seed=1)
 
-    brute = VectorStore(dim=dim)
+    brute = FlatIndex(dim=dim)
     brute.add_batch(vectors)
 
     ivf = IVFIndex(dim=dim, n_lists=n_lists)
@@ -63,7 +63,7 @@ def test_recall_improves_with_nprobe():
     vectors = _blob_vectors(n_blobs=30, n_per_blob=100, dim=dim, std=1.0, seed=3)
     queries = _random_vectors(50, dim, seed=4)
 
-    brute = VectorStore(dim=dim)
+    brute = FlatIndex(dim=dim)
     brute.add_batch(vectors)
 
     ivf = IVFIndex(dim=dim, n_lists=n_lists)

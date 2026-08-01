@@ -3,7 +3,8 @@ import pytest
 
 from mavka.adapter import SyntheticWorldModel, generate_trajectory, populate_store
 from mavka.storage.log import AppendLog
-from mavka.index.flat import VectorStore, normalize
+from mavka.index.flat import FlatIndex
+from mavka.core.distance import normalize
 
 
 def test_synthetic_model_produces_unit_vectors_of_right_shape_and_dtype():
@@ -116,7 +117,7 @@ def test_end_to_end_smoke_with_vector_store():
     episode_length = 20
 
     model = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=0)
-    store = VectorStore(dim=dim)
+    store = FlatIndex(dim=dim)
 
     ids = populate_store(model, store, n_episodes=3, episode_length=episode_length)
     assert store.count == 3 * episode_length

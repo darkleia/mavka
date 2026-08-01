@@ -3,7 +3,7 @@ import numpy as np
 from mavka.adapter import SyntheticWorldModel
 from mavka.eval.sweep import evaluate
 from mavka.pipeline import build_pipeline_from_adapter
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def main() -> None:
@@ -43,7 +43,7 @@ def main() -> None:
         reference_adapter,
         n_episodes=n_episodes,
         episode_length=episode_length,
-        index=VectorStore(dim=dim),
+        index=FlatIndex(dim=dim),
     )
 
     pipeline._index.nprobe = nprobe

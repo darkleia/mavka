@@ -3,7 +3,7 @@ import pytest
 
 from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.eval.baseline import evaluate_no_memory, mean_prediction_error, prediction_error, split_episodes
-from mavka.index.flat import normalize
+from mavka.core.distance import normalize
 
 
 def test_prediction_error_zero_when_equal_positive_when_different():

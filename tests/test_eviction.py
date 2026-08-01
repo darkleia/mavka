@@ -4,7 +4,7 @@ import pytest
 from mavka.lifecycle.eviction import EvictionPolicy
 from mavka.graph.adjacency import EDGE_TEMPORAL, AdjacencyStore
 from mavka.storage.log import AppendLog
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 NOW_NS = 1_000_000_000_000
 SECOND_NS = 10**9
@@ -15,7 +15,7 @@ def _rand(dim, seed):
 
 
 def _build_index(dim, log, ids):
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
     for id_ in ids:
         index.add(log.get(id_).z)
     return index
@@ -51,7 +51,7 @@ def test_eviction_respects_capacity():
 
     policy = EvictionPolicy()
     result = policy.evict_to_capacity(
-        log, index, index_factory=lambda: VectorStore(dim=dim), capacity=10, now_ns=NOW_NS
+        log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=10, now_ns=NOW_NS
     )
 
     assert result["log"].count == 10
@@ -77,7 +77,7 @@ def test_pinning_protects_rare_surprising_record():
         policy.record_retrieval_feedback(id_, helped=True, now_ns=NOW_NS)
 
     result = policy.evict_to_capacity(
-        log, index, index_factory=lambda: VectorStore(dim=dim), capacity=5, now_ns=NOW_NS
+        log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=5, now_ns=NOW_NS
     )
 
     evicted_ids = set(result["evicted_ids"])
@@ -103,7 +103,7 @@ def test_all_pinned_over_capacity_evicts_nothing_and_warns():
     policy = EvictionPolicy()
     with pytest.warns(UserWarning):
         result = policy.evict_to_capacity(
-            log, index, index_factory=lambda: VectorStore(dim=dim), capacity=5, now_ns=NOW_NS
+            log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=5, now_ns=NOW_NS
         )
 
     assert result["evicted_ids"] == []
@@ -149,7 +149,7 @@ def test_reference_integrity_after_eviction():
     result = policy.evict_to_capacity(
         log,
         index,
-        index_factory=lambda: VectorStore(dim=dim),
+        index_factory=lambda: FlatIndex(dim=dim),
         capacity=5,
         graph=graph,
         now_ns=NOW_NS,
@@ -188,7 +188,7 @@ def test_noop_when_under_capacity():
     index = _build_index(dim, log, ids)
 
     policy = EvictionPolicy()
-    result = policy.evict_to_capacity(log, index, index_factory=lambda: VectorStore(dim=dim), capacity=10)
+    result = policy.evict_to_capacity(log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=10)
 
     assert result["evicted_ids"] == []
     assert result["log"] is log
@@ -198,10 +198,10 @@ def test_noop_when_under_capacity():
 def test_noop_when_empty():
     dim = 8
     log = AppendLog(dim=dim)
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
 
     policy = EvictionPolicy()
-    result = policy.evict_to_capacity(log, index, index_factory=lambda: VectorStore(dim=dim), capacity=10)
+    result = policy.evict_to_capacity(log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=10)
 
     assert result["evicted_ids"] == []
     assert result["log"].count == 0
@@ -220,7 +220,7 @@ def test_determinism():
         for id_ in ids[::3]:
             policy.record_retrieval_feedback(id_, helped=True, now_ns=NOW_NS)
         result = policy.evict_to_capacity(
-            log, index, index_factory=lambda: VectorStore(dim=dim), capacity=10, now_ns=NOW_NS
+            log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=10, now_ns=NOW_NS
         )
         return sorted(result["evicted_ids"]), result["log"].count
 

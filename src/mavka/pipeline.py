@@ -7,7 +7,7 @@ from mavka.retrieval.keying import make_key
 from mavka.storage.log import AppendLog
 from mavka.core.record import Experience
 from mavka.storage.segments import SegmentStore
-from mavka.index.flat import normalize
+from mavka.core.distance import normalize
 
 
 class Pipeline:

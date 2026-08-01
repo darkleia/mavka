@@ -6,7 +6,7 @@ from mavka.adapter import SyntheticWorldModel, generate_trajectory
 from mavka.eval.baseline import split_episodes
 from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def test_action_conditioned_retrieval_distinguishes_matching_action():
@@ -20,7 +20,7 @@ def test_action_conditioned_retrieval_distinguishes_matching_action():
 
     def build_pipeline(scale):
         pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
+            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
         )
         matching_id = pipeline.observe(z=z_common, action=action_a, z_next=None, episode_id=0)
         mismatched_id = pipeline.observe(
@@ -57,7 +57,7 @@ def test_evaluate_with_retrieval_returns_comparable_stats():
 
     eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=20)
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
 
     predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
@@ -89,7 +89,7 @@ def test_determinism_same_seed_same_result():
 
         eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=21)
         pipeline = ActionConditionedPipeline(
-            dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+            dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
         )
         predictor = ConcatFusionPredictor(eval_adapter, alpha=1.0)
         return evaluate_with_retrieval(

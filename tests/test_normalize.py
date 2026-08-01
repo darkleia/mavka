@@ -1,19 +1,19 @@
 import numpy as np
 import pytest
 
-from mavka import VectorStore
-from mavka.index.flat import normalize
+from mavka import FlatIndex
+from mavka.core.distance import normalize
 
 
 def test_add_stores_unit_norm_vector():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     id_ = store.add([3.0, 4.0, 0.0])
     stored = store.get(id_)
     assert np.linalg.norm(stored) == pytest.approx(1.0, abs=1e-6)
 
 
 def test_add_batch_normalizes_every_row():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     ids = store.add_batch([[3.0, 4.0, 0.0], [1.0, 1.0, 1.0], [0.0, 0.0, 5.0]])
     for id_ in ids:
         norm = np.linalg.norm(store.get(id_))
@@ -21,7 +21,7 @@ def test_add_batch_normalizes_every_row():
 
 
 def test_scaled_vector_normalizes_to_same_stored_vector():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     id_a = store.add([1.0, 2.0, 3.0])
     id_b = store.add([10.0, 20.0, 30.0])
     np.testing.assert_allclose(store.get(id_a), store.get(id_b), atol=1e-6)
@@ -52,19 +52,19 @@ def test_normalize_batch_with_zero_row_raises():
 
 
 def test_add_zero_vector_raises():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     with pytest.raises(ValueError):
         store.add([0.0, 0.0, 0.0])
 
 
 def test_add_batch_with_zero_row_raises():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     with pytest.raises(ValueError):
         store.add_batch([[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]])
 
 
 def test_search_with_unnormalized_query_finds_stored_vector():
-    store = VectorStore(dim=3)
+    store = FlatIndex(dim=3)
     store.add([1.0, 0.0, 0.0])
     store.add([0.0, 1.0, 0.0])
     store.add([0.0, 0.0, 1.0])

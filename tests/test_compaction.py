@@ -3,7 +3,7 @@ import numpy as np
 from mavka.lifecycle.compaction import compact
 from mavka.graph.adjacency import EDGE_ANALOGOUS, EDGE_TEMPORAL, AdjacencyStore
 from mavka.storage.log import AppendLog
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _rand(dim, seed):
@@ -11,7 +11,7 @@ def _rand(dim, seed):
 
 
 def _build_index(dim, log, ids):
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
     for id_ in ids:
         index.add(log.get(id_).z)
     return index
@@ -26,7 +26,7 @@ def test_tombstone_reclamation_merge_false():
         log.tombstone(ids[i])
 
     index = _build_index(dim, log, ids)
-    result = compact(log, index, index_factory=lambda: VectorStore(dim=dim), merge=False)
+    result = compact(log, index, index_factory=lambda: FlatIndex(dim=dim), merge=False)
 
     new_log = result["log"]
     id_map = result["id_map"]
@@ -56,7 +56,7 @@ def test_near_duplicate_merge_keeps_highest_pred_err():
 
     index = _build_index(dim, log, [id_a, id_b, id_c])
     result = compact(
-        log, index, index_factory=lambda: VectorStore(dim=dim), merge=True, similarity_threshold=0.999
+        log, index, index_factory=lambda: FlatIndex(dim=dim), merge=True, similarity_threshold=0.999
     )
     id_map = result["id_map"]
 
@@ -87,7 +87,7 @@ def test_reference_integrity_after_compaction():
     result = compact(
         log,
         index,
-        index_factory=lambda: VectorStore(dim=dim),
+        index_factory=lambda: FlatIndex(dim=dim),
         graph=graph,
         merge=True,
         similarity_threshold=0.999,
@@ -115,7 +115,7 @@ def test_episode_coherence_after_compaction():
     log.tombstone(ep0_ids[2])
 
     index = _build_index(dim, log, ep0_ids)
-    result = compact(log, index, index_factory=lambda: VectorStore(dim=dim), merge=False)
+    result = compact(log, index, index_factory=lambda: FlatIndex(dim=dim), merge=False)
     new_log = result["log"]
     id_map = result["id_map"]
 
@@ -138,7 +138,7 @@ def test_merge_false_is_lossless_for_live_records():
     log.tombstone(ids[3])
 
     index = _build_index(dim, log, ids)
-    result = compact(log, index, index_factory=lambda: VectorStore(dim=dim), merge=False)
+    result = compact(log, index, index_factory=lambda: FlatIndex(dim=dim), merge=False)
 
     assert result["log"].count == 7
     for i, old_id in enumerate(ids):
@@ -155,7 +155,7 @@ def test_no_duplicates_case_is_noop_for_merge():
 
     index = _build_index(dim, log, ids)
     result = compact(
-        log, index, index_factory=lambda: VectorStore(dim=dim), merge=True, similarity_threshold=0.9999
+        log, index, index_factory=lambda: FlatIndex(dim=dim), merge=True, similarity_threshold=0.9999
     )
 
     assert result["log"].count == 5
@@ -165,9 +165,9 @@ def test_no_duplicates_case_is_noop_for_merge():
 def test_empty_store():
     dim = 8
     log = AppendLog(dim=dim)
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
 
-    result = compact(log, index, index_factory=lambda: VectorStore(dim=dim))
+    result = compact(log, index, index_factory=lambda: FlatIndex(dim=dim))
 
     assert result["log"].count == 0
     assert result["index"].count == 0
@@ -182,7 +182,7 @@ def test_all_tombstoned_store():
         log.tombstone(id_)
 
     index = _build_index(dim, log, ids)
-    result = compact(log, index, index_factory=lambda: VectorStore(dim=dim))
+    result = compact(log, index, index_factory=lambda: FlatIndex(dim=dim))
 
     assert result["log"].count == 0
     for id_ in ids:
@@ -202,7 +202,7 @@ def test_determinism():
         result = compact(
             log,
             index,
-            index_factory=lambda: VectorStore(dim=dim),
+            index_factory=lambda: FlatIndex(dim=dim),
             merge=True,
             similarity_threshold=0.99,
         )

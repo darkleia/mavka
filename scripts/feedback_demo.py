@@ -3,7 +3,7 @@ import numpy as np
 from mavka.lifecycle.eviction import EvictionPolicy
 from mavka.lifecycle.feedback import FeedbackBuffer, drain_feedback
 from mavka.storage.log import AppendLog
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 NOW_NS = 1_000_000_000_000
 SECOND_NS = 10**9
@@ -34,7 +34,7 @@ def main() -> None:
     ]
     all_ids = [*helpful_ids, *unhelpful_ids]
 
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
     for id_ in all_ids:
         index.add(log.get(id_).z)
 
@@ -69,7 +69,7 @@ def main() -> None:
         print(f"  id={id_} ({tag:9s}) score={scores_after[id_]:.4f}")
 
     result = policy.evict_to_capacity(
-        log, index, index_factory=lambda: VectorStore(dim=dim), capacity=capacity, now_ns=NOW_NS
+        log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=capacity, now_ns=NOW_NS
     )
     evicted = set(result["evicted_ids"])
     print(f"\nevicted down to capacity {capacity}: {sorted(evicted)}")

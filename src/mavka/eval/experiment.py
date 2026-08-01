@@ -8,7 +8,7 @@ from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.graph.adjacency import AdjacencyStore
 from mavka.pipeline import ActionConditionedPipeline, Pipeline
 from mavka.retrieval.scorer import FixedWeightScorer
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 CONDITION_NAMES = [
     "no_memory",
@@ -40,7 +40,7 @@ _DEFAULT_CONFIG = {
 
 def _new_pipeline(dim, action_dim, scale):
     return ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim), scale=scale
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim), scale=scale
     )
 
 
@@ -64,7 +64,7 @@ def _build_graph(dim, action_dim, memory_episodes, cfg) -> AdjacencyStore:
     graph_pipeline = Pipeline(
         dim=dim,
         action_dim=action_dim,
-        index=VectorStore(dim=dim),
+        index=FlatIndex(dim=dim),
         graph=graph,
         edge_builder=edge_builder,
     )

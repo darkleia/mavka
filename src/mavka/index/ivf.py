@@ -4,7 +4,8 @@ from enum import Enum
 import numpy as np
 
 from mavka.index.kmeans import assign, kmeans
-from mavka.index.flat import VectorStore, normalize
+from mavka.index.flat import FlatIndex
+from mavka.core.distance import normalize
 
 
 class IVFState(str, Enum):
@@ -32,7 +33,7 @@ class IVFIndex:
         # how many buckets to check
         self.nprobe = 1
 
-        self._store = VectorStore(dim=dim)
+        self._store = FlatIndex(dim=dim)
         self._state = IVFState.UNTRAINED
         self._centroids: np.ndarray | None = None
         self._n_lists_actual = 0

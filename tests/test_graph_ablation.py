@@ -5,7 +5,7 @@ from mavka.eval.experiment import CONDITION_NAMES, graph_helps, run_memory_exper
 from mavka.graph.adjacency import EDGE_TEMPORAL, AdjacencyStore
 from mavka.pipeline import ActionConditionedPipeline
 from mavka.retrieval.scorer import FixedWeightScorer
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def _rand(dim, seed):
@@ -16,7 +16,7 @@ def test_use_graph_false_is_pre_graph_identity():
     dim = 8
     action_dim = 2
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     scorer = FixedWeightScorer(pipeline._log)
 
@@ -46,7 +46,7 @@ def test_use_graph_true_differs_from_off_when_graph_has_edges():
     dim = 8
     action_dim = 2
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     ids = [
         pipeline.observe(z=_rand(dim, i), action=_rand(action_dim, i + 50), z_next=None, episode_id=0)

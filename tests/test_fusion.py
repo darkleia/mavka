@@ -6,7 +6,8 @@ from mavka.eval.baseline import evaluate_no_memory, split_episodes
 from mavka.retrieval.fusion import ConcatFusionPredictor, build_context
 from mavka.storage.log import AppendLog
 from mavka.pipeline import ActionConditionedPipeline
-from mavka.index.flat import VectorStore, normalize
+from mavka.index.flat import FlatIndex
+from mavka.core.distance import normalize
 
 
 def _rand(dim, seed):
@@ -90,7 +91,7 @@ def test_alpha_zero_matches_no_memory_baseline_exactly():
 
     fusion_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=40)
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     predictor = ConcatFusionPredictor(fusion_adapter, alpha=0.0)
     fusion_result = evaluate_with_retrieval(
@@ -194,7 +195,7 @@ def test_end_to_end_fusion_evaluation():
 
     eval_adapter = SyntheticWorldModel(dim=dim, action_dim=action_dim, seed=50)
     pipeline = ActionConditionedPipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim + action_dim)
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim + action_dim)
     )
     predictor = ConcatFusionPredictor(eval_adapter, alpha=0.5)
 

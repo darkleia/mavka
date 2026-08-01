@@ -2,7 +2,7 @@ import numpy as np
 
 from mavka.lifecycle.eviction import EvictionPolicy
 from mavka.storage.log import AppendLog
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 NOW_NS = 1_000_000_000_000
 
@@ -27,7 +27,7 @@ def main() -> None:
     rare_id = log.append(z=_rand(dim, 999), episode_id=0, pred_err=8.0, timestamp_ns=NOW_NS)
 
     all_ids = [*boring_ids, rare_id]
-    index = VectorStore(dim=dim)
+    index = FlatIndex(dim=dim)
     for id_ in all_ids:
         index.add(log.get(id_).z)
 
@@ -38,7 +38,7 @@ def main() -> None:
     # decides what to drop, even though it has zero retrieval utility.
     policy = EvictionPolicy(pin_threshold=1.0)
     result = policy.evict_to_capacity(
-        log, index, index_factory=lambda: VectorStore(dim=dim), capacity=capacity, now_ns=NOW_NS
+        log, index, index_factory=lambda: FlatIndex(dim=dim), capacity=capacity, now_ns=NOW_NS
     )
 
     new_log = result["log"]

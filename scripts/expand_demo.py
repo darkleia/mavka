@@ -7,7 +7,7 @@ from mavka.retrieval.fusion import ConcatFusionPredictor
 from mavka.graph.adjacency import AdjacencyStore
 from mavka.pipeline import Pipeline
 from mavka.retrieval.scorer import FixedWeightScorer
-from mavka.index.flat import VectorStore
+from mavka.index.flat import FlatIndex
 
 
 def main() -> None:
@@ -29,7 +29,7 @@ def main() -> None:
     graph = AdjacencyStore(degree=8)
     builder = EdgeBuilder(n_analogous=4, similarity_threshold=0.3, temporal_weight=1.0)
     demo_pipeline = Pipeline(
-        dim=dim, action_dim=action_dim, index=VectorStore(dim=dim), graph=graph, edge_builder=builder
+        dim=dim, action_dim=action_dim, index=FlatIndex(dim=dim), graph=graph, edge_builder=builder
     )
     for episode in memory_episodes:
         for step in episode:
@@ -62,7 +62,7 @@ def main() -> None:
         eval_pipeline = Pipeline(
             dim=dim,
             action_dim=action_dim,
-            index=VectorStore(dim=dim),
+            index=FlatIndex(dim=dim),
             graph=eval_graph,
             edge_builder=eval_builder,
         )
