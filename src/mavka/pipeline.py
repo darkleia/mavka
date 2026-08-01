@@ -15,7 +15,15 @@ class Pipeline:
     experience a given id refers to.
     """
 
-    def __init__(self, dim: int, action_dim: int | None = None, index=None, store_path=None):
+    def __init__(
+        self,
+        dim: int,
+        action_dim: int | None = None,
+        index=None,
+        store_path=None,
+        graph=None,
+        edge_builder=None,
+    ):
         self.dim = dim
         self.action_dim = action_dim
 
@@ -26,13 +34,16 @@ class Pipeline:
             else None
         )
         self._index = index if index is not None else IVFIndex(dim=dim)
+        self._graph = graph
+        self._edge_builder = edge_builder
 
     def observe(
         self, z, action, z_next, pred_err: float = 0.0, episode_id: int = 0
     ) -> int:
         """The single write entry point: normalize z, append it to the log
-        (and the segment store, if configured), and add it to the index
-        under the same id.
+        (and the segment store, if configured), add it to the index under
+        the same id, and -- if a graph and edge_builder were configured --
+        build its outgoing edges.
 
         z_next is accepted for calling convenience (it mirrors the step
         dicts generate_trajectory produces) but is not stored as its own
@@ -48,6 +59,13 @@ class Pipeline:
             self._segment_store.append_many([self._log.get(log_id)])
 
         self._index.add(z)
+
+        if self._graph is not None and self._edge_builder is not None:
+            self._graph.add_node()  # kept in lockstep with log_id by construction
+            record = self._log.get(log_id)
+            self._edge_builder.on_insert(
+                log_id, z, action, episode_id, record.seq_no, self._log, self._index, self._graph
+            )
 
         return log_id
 
