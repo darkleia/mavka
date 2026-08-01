@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from mavka.record import FLAG_DELETED, Experience
+from mavka.record import FLAG_DELETED, FLAG_PINNED, Experience
 
 
 class AppendLog:
@@ -117,6 +117,11 @@ class AppendLog:
         with self._lock:
             record = self.get(id)
             self._records[id] = replace(record, flags=record.flags | FLAG_DELETED)
+
+    def pin(self, id: int) -> None:
+        with self._lock:
+            record = self.get(id)
+            self._records[id] = replace(record, flags=record.flags | FLAG_PINNED)
 
     def _episode_member_ids(self, episode_id: int) -> list[int]:
         if episode_id not in self._episode_index:
