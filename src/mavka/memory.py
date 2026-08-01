@@ -7,9 +7,11 @@ from mavka.core.record import Experience
 from mavka.graph.expand import decay_for_depth
 from mavka.graph.expand import expand as _expand
 from mavka.index.ivf import IVFIndex
+from mavka.lifecycle.compaction import compact as _compact
 from mavka.retrieval.keying import make_key
 from mavka.storage.log import AppendLog
 from mavka.storage.segments import SegmentStore
+from mavka.storage.tiered import TieredStore
 
 _DEFAULT_EXPANDER_MAX_NODES = 50
 
@@ -56,6 +58,20 @@ class Memory:
     convenience against the step dicts generate_trajectory produces, as
     in both old classes -- it is never stored; a step's outcome is simply
     the z of the next observe() call in the same episode.
+
+    Lifecycle wiring (all off by default -- see lifecycle/maintenance.py
+    for the worker that actually drives these):
+    - eviction_policy: an EvictionPolicy instance. If set, recall()
+      still never calls it directly (see the hot-path note below); it is
+      only ever advanced by MaintenanceWorker via drain_feedback and
+      used by compact()/evict()/migrate() below.
+    - feedback_buffer: a FeedbackBuffer instance. If set, every recall()
+      call appends the ids it returns via feedback_buffer.record_used()
+      -- a trivial, negligible-cost append, no scoring or policy work on
+      the hot path. Left None (the default), recall() is unchanged.
+    - use_tiering: if True, storage is a TieredStore (hot/cold split)
+      instead of a single index -- see migrate() below. Only supported
+      with action_scale=0.0 (TieredStore indexes on z alone).
     """
 
     def __init__(
@@ -70,6 +86,10 @@ class Memory:
         action_scale: float = 0.0,
         expansion_depth: int = 0,
         fetch_factor: int = 5,
+        eviction_policy=None,
+        feedback_buffer=None,
+        use_tiering: bool = False,
+        hot_capacity: int = 200,
     ):
         self.config = config
         self.dim = config.dim
@@ -84,22 +104,52 @@ class Memory:
             if expander is not None
             else functools.partial(_expand, max_nodes=_DEFAULT_EXPANDER_MAX_NODES, edge_types=None)
         )
+        self.eviction_policy = eviction_policy
+        self.feedback_buffer = feedback_buffer
+        self.use_tiering = use_tiering
+        self.last_feedback_token = None
 
-        self._log = AppendLog(dim=self.dim, action_dim=self.action_dim)
+        if use_tiering:
+            if action_scale > 0.0:
+                raise ValueError(
+                    "use_tiering=True only supports action_scale=0.0: TieredStore "
+                    "indexes on z alone, with no action-conditioned keying."
+                )
+            self._tiered = TieredStore(
+                dim=self.dim,
+                action_dim=self.action_dim,
+                hot_capacity=hot_capacity,
+                eviction_policy=eviction_policy,
+            )
+            # TieredStore owns the one true log; Memory does not keep a
+            # second, separately-appended copy.
+            self._log = self._tiered._log
+            self._index = None
+        else:
+            self._tiered = None
+            self._log = AppendLog(dim=self.dim, action_dim=self.action_dim)
+            if index is not None:
+                self._index = index
+            else:
+                index_dim = self.dim if action_scale == 0.0 else self.dim + self.action_dim
+                self._index = IVFIndex(dim=index_dim)
+
         self._segment_store = (
             SegmentStore(store_path, dim=self.dim, action_dim=self.action_dim)
             if store_path is not None
             else None
         )
 
-        if index is not None:
-            self._index = index
-        else:
-            index_dim = self.dim if action_scale == 0.0 else self.dim + self.action_dim
-            self._index = IVFIndex(dim=index_dim)
-
     def observe(self, z, action, z_next, pred_err: float = 0.0, episode_id: int = 0) -> int:
         z = normalize(np.asarray(z, dtype=np.float32))
+
+        if self._tiered is not None:
+            log_id = self._tiered.observe(
+                z=z, action=action, z_next=z_next, pred_err=pred_err, episode_id=episode_id
+            )
+            if self._segment_store is not None:
+                self._segment_store.append_many([self._log.get(log_id)])
+            return log_id
 
         log_id = self._log.append(z=z, action=action, pred_err=pred_err, episode_id=episode_id)
 
@@ -123,24 +173,47 @@ class Memory:
             query_key = z
 
         if self.scorer is None:
-            return self._index.search(query_key, k)
+            if self._tiered is not None:
+                results = self._tiered.recall(query_key, k)
+            else:
+                results = self._index.search(query_key, k)
+        else:
+            if self._tiered is not None:
+                candidates = self._tiered.recall(query_key, k * self.fetch_factor)
+            else:
+                candidates = self._index.search(query_key, k * self.fetch_factor)
 
-        candidates = self._index.search(query_key, k * self.fetch_factor)
+            if self.graph is not None and self.expansion_depth > 0:
+                seed_scores = dict(candidates)
+                expanded = self.expander(
+                    list(seed_scores.keys()), self.graph, depth=self.expansion_depth
+                )
+                candidates = [
+                    (node_id, seed_scores[node_id])
+                    if prov["is_seed"]
+                    else (node_id, prov["weight"] * decay_for_depth(prov["depth"]))
+                    for node_id, prov in expanded
+                ]
 
-        if self.graph is not None and self.expansion_depth > 0:
-            seed_scores = dict(candidates)
-            expanded = self.expander(
-                list(seed_scores.keys()), self.graph, depth=self.expansion_depth
+            results = self.scorer.score(candidates, action)[:k]
+
+        # Hot-path hook: a trivial append, nothing else -- see
+        # FeedbackBuffer's own docstring for the deferred-drain design
+        # this participates in. No-op (default) when no buffer is
+        # attached. record_used() returns a token that tag_outcome()
+        # needs; recall()'s own return type stays exactly
+        # list[tuple[int, float]], so the token is exposed here instead,
+        # for the harness to read right after calling recall() and pass
+        # to self.feedback_buffer.tag_outcome(...) once the step's
+        # verdict is known -- call recall() again (or on another step)
+        # only after tagging, since this always holds only the latest
+        # token.
+        if self.feedback_buffer is not None:
+            self.last_feedback_token = self.feedback_buffer.record_used(
+                [id_ for id_, _ in results]
             )
-            candidates = [
-                (node_id, seed_scores[node_id])
-                if prov["is_seed"]
-                else (node_id, prov["weight"] * decay_for_depth(prov["depth"]))
-                for node_id, prov in expanded
-            ]
 
-        ranked = self.scorer.score(candidates, action)
-        return ranked[:k]
+        return results
 
     def get(self, id: int) -> Experience:
         return self._log.get(id)
@@ -148,6 +221,109 @@ class Memory:
     @property
     def count(self) -> int:
         return self._log.count
+
+    def compact(
+        self,
+        similarity_threshold: float = 0.98,
+        merge: bool = True,
+        allow_cross_episode: bool = False,
+    ) -> dict:
+        """Delegates to lifecycle.compaction.compact against this
+        memory's own log/index/graph, then swaps this memory's own
+        references over to the compacted result -- never called from the
+        hot path, meant to be driven by MaintenanceWorker.
+
+        Only supported for a plain (non-tiered), z-only (action_scale=0.0)
+        memory. Two confirmed, genuine incompatibilities in the existing
+        lifecycle code (not something this wiring papers over -- see
+        lifecycle/maintenance.py's module docstring for the full writeup):
+        - compact()'s index rebuild always re-inserts plain z vectors
+          (see lifecycle/compaction.py); an action-conditioned index's
+          keys are a different length (z concatenated with scaled
+          action), so this raises inside compact() itself the moment
+          action_scale > 0.
+        - compact() always rebuilds the log with new ids, but
+          TieredStore's own docstring is explicit that its ids must
+          never be reassigned (its internal tier bookkeeping is keyed by
+          them) -- composing the two would silently corrupt that
+          bookkeeping, so this is refused up front rather than allowed.
+        """
+        if self._tiered is not None:
+            raise ValueError(
+                "Memory.compact() is not supported when use_tiering=True: "
+                "compact() always reassigns ids, which would corrupt "
+                "TieredStore's id-keyed tier bookkeeping. Use migrate() instead."
+            )
+        if self.action_scale > 0.0:
+            raise ValueError(
+                "Memory.compact() only supports action_scale=0.0: compact()'s "
+                "index rebuild always re-inserts plain z vectors, incompatible "
+                f"with this memory's action-conditioned (action_scale={self.action_scale}) index."
+            )
+
+        index_factory = functools.partial(type(self._index), dim=self.dim)
+        result = _compact(
+            self._log,
+            self._index,
+            index_factory,
+            graph=self.graph,
+            similarity_threshold=similarity_threshold,
+            merge=merge,
+            allow_cross_episode=allow_cross_episode,
+        )
+        self._swap_rebuilt(result)
+        return result
+
+    def evict(self, capacity: int, now_ns: int | None = None) -> dict:
+        """Delegates to self.eviction_policy.evict_to_capacity against
+        this memory's own log/index/graph, then swaps this memory's own
+        references over to the result. Same composability constraints as
+        compact() (evict_to_capacity calls compact() internally) -- see
+        compact()'s docstring.
+        """
+        if self.eviction_policy is None:
+            raise ValueError("Memory.evict() requires an eviction_policy to be configured")
+        if self._tiered is not None:
+            raise ValueError(
+                "Memory.evict() is not supported when use_tiering=True (see compact()'s docstring)"
+            )
+        if self.action_scale > 0.0:
+            raise ValueError(
+                "Memory.evict() only supports action_scale=0.0 (see compact()'s docstring)"
+            )
+
+        index_factory = functools.partial(type(self._index), dim=self.dim)
+        result = self.eviction_policy.evict_to_capacity(
+            self._log, self._index, index_factory, capacity, graph=self.graph, now_ns=now_ns
+        )
+        self._swap_rebuilt(result)
+        return result
+
+    def migrate(self, now_ns: int | None = None) -> dict:
+        """Delegates to the tiered store's migrate_hot_to_cold. Only
+        supported when use_tiering=True; ids never change (TieredStore's
+        own invariant), so there is no log/index swap to do here.
+        """
+        if self._tiered is None:
+            raise ValueError("Memory.migrate() requires use_tiering=True")
+        return self._tiered.migrate_hot_to_cold(now_ns=now_ns)
+
+    def _swap_rebuilt(self, result: dict) -> None:
+        """Both compact() and evict_to_capacity() return a snapshot
+        rebuilt from scratch (new ids, new log/index/graph) and
+        explicitly document that it's the caller's job to swap every
+        reference over -- see compaction.py's own docstring. Memory owns
+        log/index/graph directly, but an attached scorer (bound to
+        memory's log at construction, since FixedWeightScorer needs a
+        real log up front -- see Memory's class docstring) holds its own
+        separate reference that would otherwise go stale the moment ids
+        are reassigned, so it is rebound here too.
+        """
+        self._log = result["log"]
+        self._index = result["index"]
+        self.graph = result["graph"]
+        if self.scorer is not None and hasattr(self.scorer, "_log"):
+            self.scorer._log = self._log
 
     def close(self) -> None:
         if self._segment_store is not None:

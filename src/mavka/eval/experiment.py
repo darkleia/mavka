@@ -4,14 +4,17 @@ import numpy as np
 
 from mavka.adapter import generate_trajectory
 from mavka.config import MavkaConfig
-from mavka.eval.baseline import evaluate_no_memory, split_episodes
+from mavka.eval.baseline import evaluate_no_memory, prediction_error, split_episodes
 from mavka.eval.retrieval_eval import evaluate_with_retrieval
 from mavka.graph.adjacency import AdjacencyStore
 from mavka.graph.builder import EdgeBuilder
 from mavka.graph.expand import expand
 from mavka.index.flat import FlatIndex
+from mavka.lifecycle.eviction import EvictionPolicy
+from mavka.lifecycle.feedback import FeedbackBuffer
+from mavka.lifecycle.maintenance import MaintenanceWorker
 from mavka.memory import Memory
-from mavka.retrieval.fusion import ConcatFusionPredictor
+from mavka.retrieval.fusion import ConcatFusionPredictor, build_context
 from mavka.retrieval.scorer import FixedWeightScorer
 
 CONDITION_NAMES = [
@@ -23,6 +26,7 @@ CONDITION_NAMES = [
     "full_system_no_graph",
     "full_system_graph_depth1",
     "full_system_graph_depth2",
+    "full_system_with_maintenance",
 ]
 BASELINE_CONDITION = "no_memory"
 GRAPH_DEPTHS = (1, 2)
@@ -39,6 +43,9 @@ _DEFAULT_CONFIG = {
     "similarity_threshold": 0.3,
     "temporal_weight": 1.0,
     "max_nodes": 200,
+    "maintenance_capacity": None,  # set per-experiment; see _run_full_system_with_maintenance
+    "maintenance_compaction_threshold": None,
+    "maintenance_cadence_episodes": 10,
 }
 
 
@@ -105,6 +112,136 @@ def _build_graph(dim, action_dim, memory_episodes, cfg) -> AdjacencyStore:
     return graph
 
 
+def _accumulate_maintenance(totals: dict, report: dict) -> None:
+    totals["feedback_events_applied"] += report["feedback_events_applied"]
+    if report["compaction"] is not None:
+        totals["records_compacted"] += (
+            report["compaction"]["records_merged"] + report["compaction"]["tombstones_dropped"]
+        )
+    if report["eviction"] is not None:
+        totals["records_evicted"] += len(report["eviction"]["evicted_ids"])
+    if report["migration"] is not None:
+        totals["records_migrated"] += len(report["migration"]["migrated_ids"])
+
+
+def _run_full_system_with_maintenance(
+    memory_episodes,
+    eval_episodes,
+    adapter,
+    k: int,
+    cfg: dict,
+    best_alpha: float,
+    maintenance_capacity: int,
+    maintenance_compaction_threshold: int,
+) -> tuple[dict, dict]:
+    """Same retrieval configuration as full_system (FixedWeightScorer at
+    cfg["scorer_weights"], fusion alpha held at full_system's own best,
+    not re-swept -- same pattern full_system_no_graph/graph_depth* already
+    use) -- but action_scale=0.0 instead of cfg["scale"].
+
+    Why: wiring this surfaced a genuine, confirmed incompatibility in the
+    existing (until now unwired) lifecycle code -- compact()'s index
+    rebuild always re-inserts plain z vectors (see
+    lifecycle/compaction.py), which raises immediately against an
+    action-conditioned (dim + action_dim keyed) index; evict_to_capacity
+    hits the same wall since it calls compact() internally. This is not
+    something this wiring step patches around -- see Memory.compact()'s
+    docstring and MaintenanceWorker's module docstring for the full
+    writeup. So this condition demonstrates the lifecycle flow correctly
+    and honestly at action_scale=0.0 (appearance-only keying, the other
+    axis full_system already isolates elsewhere in this experiment),
+    rather than forcing an incompatible composition on cfg["scale"].
+
+    An EvictionPolicy + FeedbackBuffer are attached, and
+    MaintenanceWorker.step() is called: every
+    cfg["maintenance_cadence_episodes"] memory episodes while filling
+    memory (a periodic background pass -- not on every single
+    observation, which would defeat the point of it being off the hot
+    path), once more right after memory is fully filled, and once more
+    after the eval pass (so feedback tagged during eval -- see below --
+    still gets drained and counted). Each eval step tags that step's own
+    retrieval outcome via memory.last_feedback_token, using
+    evaluate_gated's own "helped" definition: memory-augmented error <
+    model-alone error.
+
+    Returns (result, maintenance_totals): result matches
+    evaluate_with_retrieval's own shape (mean_error, median_error,
+    p90_error, n_steps, errors); maintenance_totals sums every
+    worker.step() report's counters across the whole run:
+    {feedback_events_applied, records_compacted, records_evicted,
+    records_migrated}.
+    """
+    config = MavkaConfig(dim=adapter.dim, action_dim=adapter.action_dim)
+    eviction_policy = EvictionPolicy()
+    feedback_buffer = FeedbackBuffer()
+    memory = Memory(
+        config,
+        index=FlatIndex(dim=adapter.dim),
+        action_scale=0.0,
+        fetch_factor=cfg["fetch_factor"],
+        eviction_policy=eviction_policy,
+        feedback_buffer=feedback_buffer,
+    )
+    memory.scorer = FixedWeightScorer(memory._log, **cfg["scorer_weights"])
+
+    worker = MaintenanceWorker(
+        memory,
+        eviction_policy=eviction_policy,
+        feedback_buffer=feedback_buffer,
+        capacity=maintenance_capacity,
+        compaction_threshold=maintenance_compaction_threshold,
+    )
+
+    totals = {
+        "feedback_events_applied": 0,
+        "records_compacted": 0,
+        "records_evicted": 0,
+        "records_migrated": 0,
+    }
+
+    cadence = cfg["maintenance_cadence_episodes"]
+    for i, episode in enumerate(memory_episodes):
+        for step in episode:
+            memory.observe(
+                z=step["z"],
+                action=step["action"],
+                z_next=step["z_next"],
+                pred_err=step["pred_err"],
+                episode_id=step["episode_id"],
+            )
+        if (i + 1) % cadence == 0:
+            _accumulate_maintenance(totals, worker.step())
+
+    _accumulate_maintenance(totals, worker.step())  # once more after filling
+
+    predictor = ConcatFusionPredictor(adapter, alpha=best_alpha)
+    errors = []
+    for episode in eval_episodes:
+        for step in episode:
+            base = np.asarray(adapter.step(step["z"], step["action"]), dtype=np.float32)
+            base_error = prediction_error(base, step["z_next"])
+
+            results = memory.recall(step["z"], action=step["action"], k=k)
+            context = build_context(results, memory._log, k)
+            predicted = predictor.predict(step["z"], step["action"], context)
+            error = prediction_error(predicted, step["z_next"])
+
+            feedback_buffer.tag_outcome(memory.last_feedback_token, helped=error < base_error)
+            errors.append(error)
+
+    _accumulate_maintenance(totals, worker.step())  # drain feedback tagged during eval
+
+    errors_arr = np.array(errors, dtype=np.float64)
+    result = {
+        "mean_error": float(np.mean(errors_arr)),
+        "median_error": float(np.median(errors_arr)),
+        "p90_error": float(np.percentile(errors_arr, 90)),
+        "n_steps": len(errors),
+        "errors": errors_arr.tolist(),
+    }
+    return result, totals
+
+
 def run_memory_experiment(
     adapter, n_episodes: int, episode_length: int, k: int, seeds: list[int], config: dict | None = None
 ) -> dict:
@@ -145,6 +282,18 @@ def run_memory_experiment(
                                       graph is the *only* thing that
                                       differs from full_system_no_graph,
                                       isolating its marginal contribution.
+      full_system_with_maintenance -- full_system's own scorer weights and
+                                      best alpha, but action_scale=0.0 (see
+                                      _run_full_system_with_maintenance's
+                                      docstring for why -- a genuine,
+                                      confirmed incompatibility between
+                                      compact()/evict_to_capacity() and an
+                                      action-conditioned index), plus an
+                                      EvictionPolicy + FeedbackBuffer +
+                                      MaintenanceWorker driving the
+                                      previously-unwired background flow
+                                      (feedback drain, compaction,
+                                      eviction) during the run.
 
     adapter supplies dim/action_dim/class only -- a fresh instance of
     type(adapter) is constructed per seed (for trajectory generation and
@@ -153,7 +302,10 @@ def run_memory_experiment(
 
     Returns {"conditions": {name: {mean_error, std_error, n_steps,
     relative_improvement_pct, per_seed_errors}}, "seeds": [...],
-    "eval_set_sizes": [...], "baseline_condition": "no_memory"}.
+    "eval_set_sizes": [...], "baseline_condition": "no_memory",
+    "maintenance": {stat_name: {mean, std, per_seed}} for
+    feedback_events_applied/records_compacted/records_evicted/
+    records_migrated across the full_system_with_maintenance runs}.
     """
     cfg = {**_DEFAULT_CONFIG, **(config or {})}
     dim = adapter.dim
@@ -162,6 +314,12 @@ def run_memory_experiment(
 
     per_seed_errors = {name: [] for name in CONDITION_NAMES}
     per_seed_n_steps = {name: [] for name in CONDITION_NAMES}
+    per_seed_maintenance = {
+        "feedback_events_applied": [],
+        "records_compacted": [],
+        "records_evicted": [],
+        "records_migrated": [],
+    }
     eval_set_sizes = []
 
     for seed in seeds:
@@ -262,6 +420,36 @@ def run_memory_experiment(
             per_seed_errors[name].append(depth_result["mean_error"])
             per_seed_n_steps[name].append(depth_result["n_steps"])
 
+        # 8. full system + maintenance: same scorer/best_alpha as
+        # full_system, but action_scale=0.0 (see
+        # _run_full_system_with_maintenance's docstring for why) plus an
+        # eviction policy, feedback buffer, and periodic
+        # MaintenanceWorker.step() calls -- the only new variable versus
+        # full_system_no_graph is the maintenance flow itself.
+        total_memory_steps = sum(len(ep) for ep in memory_episodes)
+        maintenance_capacity = cfg["maintenance_capacity"]
+        if maintenance_capacity is None:
+            maintenance_capacity = max(1, int(total_memory_steps * 0.8))
+        maintenance_compaction_threshold = cfg["maintenance_compaction_threshold"]
+        if maintenance_compaction_threshold is None:
+            maintenance_compaction_threshold = max(1, int(total_memory_steps * 0.5))
+
+        maintenance_adapter = adapter_cls(dim=dim, action_dim=action_dim, seed=seed)
+        maintenance_result, maintenance_totals = _run_full_system_with_maintenance(
+            memory_episodes,
+            eval_episodes,
+            maintenance_adapter,
+            k,
+            cfg,
+            best_alpha,
+            maintenance_capacity,
+            maintenance_compaction_threshold,
+        )
+        per_seed_errors["full_system_with_maintenance"].append(maintenance_result["mean_error"])
+        per_seed_n_steps["full_system_with_maintenance"].append(maintenance_result["n_steps"])
+        for stat_name, value in maintenance_totals.items():
+            per_seed_maintenance[stat_name].append(value)
+
     baseline_mean = float(np.mean(per_seed_errors[BASELINE_CONDITION]))
 
     conditions = {}
@@ -280,11 +468,21 @@ def run_memory_experiment(
             "per_seed_errors": per_seed_errors[name],
         }
 
+    maintenance = {
+        stat_name: {
+            "mean": float(np.mean(values)),
+            "std": float(np.std(values)),
+            "per_seed": values,
+        }
+        for stat_name, values in per_seed_maintenance.items()
+    }
+
     return {
         "conditions": conditions,
         "seeds": list(seeds),
         "eval_set_sizes": eval_set_sizes,
         "baseline_condition": BASELINE_CONDITION,
+        "maintenance": maintenance,
     }
 
 
@@ -303,6 +501,18 @@ def format_experiment_report(results: dict) -> str:
             f"{label:28} {stats['mean_error']:12.6f} {stats['std_error']:12.6f} "
             f"{stats['n_steps']:9d} {vs_baseline:>13}"
         )
+
+    if "maintenance" in results:
+        lines.append("")
+        lines.append("maintenance activity (full_system_with_maintenance, summed across seeds):")
+        for stat_name in (
+            "feedback_events_applied",
+            "records_compacted",
+            "records_evicted",
+            "records_migrated",
+        ):
+            stat = results["maintenance"][stat_name]
+            lines.append(f"  {stat_name:28} mean={stat['mean']:8.1f}  std={stat['std']:6.1f}")
 
     return "\n".join(lines)
 
